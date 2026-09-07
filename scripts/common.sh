@@ -10,8 +10,12 @@ ISO_DIR="${WORKSPACE_DIR}/ISO"
 BUILD_DIR="${WORKSPACE_DIR}/build"
 OUTPUT_DIR="${WORKSPACE_DIR}/output"
 PACKAGES_DIR="${WORKSPACE_DIR}/packages"
-TEMPLATES_DIR="${WORKSPACE_DIR}/templates"
 SCRIPTS_DIR="${WORKSPACE_DIR}/scripts"
+IMAGES_DIR="${WORKSPACE_DIR}/images"
+
+BASE_DIR="${IMAGES_DIR}/base"
+GNU_DIR="${IMAGES_DIR}/rust/gnu"
+MSVC_DIR="${IMAGES_DIR}/rust/msvc"
 
 WIN_ISO="${ISO_DIR}/26100.1_SERVERSTANDARD_X64_EN-US.ISO"
 VIRTIO_ISO="${ISO_DIR}/virtio-win-0.1.302.iso"
@@ -73,7 +77,7 @@ check_base_inputs() {
 ensure_base_image() {
     if [[ ! -f "${BASE_IMAGE}" ]]; then
         log_warn "Base image ${BASE_IMAGE} not found! Triggering base image build first..."
-        bash "${SCRIPTS_DIR}/build-base.sh"
+        bash "${BASE_DIR}/build.sh"
     fi
 }
 

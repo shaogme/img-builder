@@ -52,25 +52,25 @@ check_kvm
 
 case "${TARGET}" in
     base)
-        bash "${SCRIPT_DIR}/build-base.sh"
+        bash "${BASE_DIR}/build.sh"
         ;;
     gnu)
         ensure_base_image
-        bash "${SCRIPT_DIR}/build-rust-gnu.sh" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+        bash "${GNU_DIR}/build.sh" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
         ;;
     msvc)
         ensure_base_image
-        bash "${SCRIPT_DIR}/build-rust-msvc.sh" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+        bash "${MSVC_DIR}/build.sh" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
         ;;
     all)
         log_step "Step 1/3: Checking / Building Base Image (win2025-core.qcow2)..."
         ensure_base_image
 
         log_step "Step 2/3: Building Rust GNU Child Image (win2025-core-rust-gnu.qcow2)..."
-        bash "${SCRIPT_DIR}/build-rust-gnu.sh" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+        bash "${GNU_DIR}/build.sh" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
 
         log_step "Step 3/3: Building Rust MSVC Child Image (win2025-core-rust-msvc.qcow2)..."
-        bash "${SCRIPT_DIR}/build-rust-msvc.sh" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+        bash "${MSVC_DIR}/build.sh" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
 
         log_step "All Images in Tree Built Successfully!"
         echo "Outputs available in ${OUTPUT_DIR}:"

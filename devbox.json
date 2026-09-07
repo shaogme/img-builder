@@ -11,9 +11,9 @@
     ],
     "scripts": {
       "build": "bash scripts/build.sh all",
-      "build:base": "bash scripts/build.sh base",
-      "build:gnu": "bash scripts/build.sh gnu",
-      "build:msvc": "bash scripts/build.sh msvc",
+      "build:base": "bash images/base/build.sh",
+      "build:gnu": "bash images/rust/gnu/build.sh",
+      "build:msvc": "bash images/rust/msvc/build.sh",
       "clean": "rm -rf build"
     }
   }

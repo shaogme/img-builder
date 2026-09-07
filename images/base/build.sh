@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: build-base.sh
+# Script: images/base/build.sh
 # Description: Automated Base Image Builder (win2025-core.qcow2)
 # OS: Windows Server 2025 Standard Core (Build 26100.1)
 # ==============================================================================
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/common.sh
-source "${SCRIPT_DIR}/common.sh"
+IMAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../scripts/common.sh
+source "${IMAGE_DIR}/../../scripts/common.sh"
 
 RAW_QCOW2="${BUILD_DIR}/win2025-core-raw.qcow2"
 UNATTEND_ISO="${BUILD_DIR}/base-unattend.iso"
@@ -25,24 +25,24 @@ ISO_ROOT="${BUILD_DIR}/base_iso_root"
 rm -rf "${ISO_ROOT}"
 mkdir -p "${ISO_ROOT}/sources"
 
-cp "${TEMPLATES_DIR}/Autounattend.xml" "${ISO_ROOT}/Autounattend.xml"
-cp "${TEMPLATES_DIR}/provision-base.ps1" "${ISO_ROOT}/provision-base.ps1"
-cp "${TEMPLATES_DIR}/provision-base.ps1" "${ISO_ROOT}/provision.ps1"
-cp "${TEMPLATES_DIR}/provision-runner.ps1" "${ISO_ROOT}/provision-runner.ps1"
+cp "${IMAGE_DIR}/Autounattend.xml" "${ISO_ROOT}/Autounattend.xml"
+cp "${IMAGE_DIR}/provision.ps1" "${ISO_ROOT}/provision-base.ps1"
+cp "${IMAGE_DIR}/provision.ps1" "${ISO_ROOT}/provision.ps1"
+cp "${IMAGE_DIR}/provision-runner.ps1" "${ISO_ROOT}/provision-runner.ps1"
 
-cat << 'EOF' > "${ISO_ROOT}/run-provision.cmd"
+cat << 'CMD_EOF' > "${ISO_ROOT}/run-provision.cmd"
 @echo off
 echo [%date% %time%] run-provision.cmd invoked from drive %~d0 >> C:\provision-bootstrap.log
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0provision-base.ps1" >> C:\provision-bootstrap.log 2>&1
 echo [%date% %time%] run-provision.cmd finished with exit code %ERRORLEVEL% >> C:\provision-bootstrap.log
-EOF
+CMD_EOF
 
-cat << 'EOF' > "${ISO_ROOT}/sources/ei.cfg"
+cat << 'CFG_EOF' > "${ISO_ROOT}/sources/ei.cfg"
 [Channel]
 OEM
 [VL]
 0
-EOF
+CFG_EOF
 
 make_iso "${UNATTEND_ISO}" "${ISO_ROOT}" "OEMDRV"
 
@@ -108,7 +108,7 @@ rm -f "${RAW_QCOW2}" "${UNATTEND_ISO}"
 rm -rf "${ISO_ROOT}"
 
 # Generate Base Metadata JSON
-cat << EOF > "${BASE_METADATA}"
+cat << JSON_EOF > "${BASE_METADATA}"
 {
   "image": {
     "filename": "$(basename "${BASE_IMAGE}")",
@@ -150,7 +150,7 @@ cat << EOF > "${BASE_METADATA}"
     "task_name": "ImageProvisionRunner"
   }
 }
-EOF
+JSON_EOF
 
 log_step "Base Image Build Completed Successfully!"
 echo "==> Base QCOW2: ${BASE_IMAGE}"

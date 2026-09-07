@@ -10,16 +10,16 @@
 
 ```mermaid
 graph TD
-    ISO["Windows 2025 ISO + VirtIO ISO"] --> BUILD_BASE["build-base.sh"]
+    ISO["Windows 2025 ISO + VirtIO ISO"] --> BUILD_BASE["images/base/build.sh"]
     BUILD_BASE --> BASE[("根母盘<br/><b>win2025-core.qcow2</b>")]
     
     BASE -. "CoW 差分层" .-> COW_GNU["gnu-work.qcow2"]
     BASE -. "CoW 差分层" .-> COW_MSVC["msvc-work.qcow2"]
     
-    COW_GNU --> BUILD_GNU["build-rust-gnu.sh"]
+    COW_GNU --> BUILD_GNU["images/rust/gnu/build.sh"]
     BUILD_GNU --> FINAL_GNU[("Rust GNU 镜像<br/><b>win2025-core-rust-gnu.qcow2</b>")]
     
-    COW_MSVC --> BUILD_MSVC["build-rust-msvc.sh"]
+    COW_MSVC --> BUILD_MSVC["images/rust/msvc/build.sh"]
     BUILD_MSVC --> FINAL_MSVC[("Rust MSVC 镜像<br/><b>win2025-core-rust-msvc.qcow2</b>")]
 ```
 
@@ -51,23 +51,30 @@ graph TD
 ## 4. 目录结构说明
 ```
 .
-├── ISO/                                 # 原始输入光盘
-├── packages/                            # 本地工具包离线缓存
-├── templates/                           # 应答与配置模板
-│   ├── Autounattend.xml                 # WinPE 安装应答
-│   ├── provision-base.ps1               # 根母盘初始化脚本 (VirtIO, SSH, Runner)
-│   ├── provision-runner.ps1             # 母盘通用下游调度器
-│   ├── provision-rust-gnu.ps1           # Rust GNU 软件栈部署与自验
-│   └── provision-rust-msvc.ps1          # Rust MSVC 软件栈部署与自验
-├── scripts/                             # 构建与编排脚本
-│   ├── common.sh                        # 公共配置、QEMU 参数与辅助函数
-│   ├── monitor-boot.py                  # ISO 引导按键辅助
-│   ├── build-base.sh                    # 构建 win2025-core.qcow2
-│   ├── build-rust-gnu.sh                # 衍生构建 win2025-core-rust-gnu.qcow2
-│   ├── build-rust-msvc.sh               # 衍生构建 win2025-core-rust-msvc.qcow2
+├── ISO/                                 # 原始输入光盘 (Windows ISO + VirtIO ISO)
+├── packages/                            # 本地工具包离线缓存 (支持全局或各子镜像按需存放)
+├── images/                              # 模块化镜像定义目录
+│   ├── base/                            # 根母盘定义 (win2025-core.qcow2)
+│   │   ├── Autounattend.xml             # WinPE 无人值守应答
+│   │   ├── build.sh                     # 母盘独立构建脚本
+│   │   ├── provision.ps1                # 母盘初始化脚本 (VirtIO, SSH, Runner)
+│   │   ├── provision-runner.ps1         # 母盘通用下游调度器
+│   │   └── README.md                    # 母盘详细说明
+│   └── rust/
+│       ├── gnu/                         # Rust GNU 衍生镜像定义
+│       │   ├── build.sh                 # GNU 衍生镜像独立构建脚本
+│       │   ├── provision.ps1            # w64devkit + Rust GNU 软件栈部署与自验
+│       │   └── README.md                # GNU 镜像规格与使用说明
+│       └── msvc/                        # Rust MSVC 衍生镜像定义
+│           ├── build.sh                 # MSVC 衍生镜像独立构建脚本
+│           ├── provision.ps1            # VS Build Tools + Rust MSVC 部署与自验
+│           └── README.md                # MSVC 镜像规格与使用说明
+├── scripts/                             # 通用编排与辅助脚本
+│   ├── common.sh                        # 公共变量、路径定义与通用函数库
+│   ├── monitor-boot.py                  # ISO 引导按键辅助监控
 │   └── build.sh                         # 全局统一编排入口
 ├── output/                              # 最终交付镜像与 JSON 元数据
-├── devbox.json                          # Devbox 命令与环境定义
+├── devbox.json                          # Devbox 环境与任务定义
 └── docker-compose.yml                   # 容器化环境编排
 ```
 
@@ -87,14 +94,24 @@ devbox run build:gnu
 devbox run build:msvc
 ```
 
-也可直接调用编排脚本：
+也可直接调用各模块自身的构建脚本：
+```bash
+# 独立构建对应镜像
+bash images/base/build.sh
+bash images/rust/gnu/build.sh
+bash images/rust/msvc/build.sh
+
+# 快速差分开发模式 (保留轻量级 CoW 差分层)
+bash images/rust/gnu/build.sh --overlay-only
+bash images/rust/msvc/build.sh --overlay-only
+```
+
+或使用全局编排脚本统一调度：
 ```bash
 bash scripts/build.sh all
 bash scripts/build.sh base
 bash scripts/build.sh gnu
 bash scripts/build.sh msvc
-
-# 附加参数：差分模式（保留极小体积的 CoW 差分层，加速本地调试）
 bash scripts/build.sh gnu --overlay-only
 ```
 

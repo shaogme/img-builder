@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: build-rust-msvc.sh
-# Description: Automated Rust MSVC Image Builder (win2025-core-rust-msvc.qcow2)
+# Script: images/rust/gnu/build.sh
+# Description: Automated Rust GNU Image Builder (win2025-core-rust-gnu.qcow2)
 # Derived from: win2025-core.qcow2 (Base Image)
 # ==============================================================================
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/common.sh
-source "${SCRIPT_DIR}/common.sh"
+IMAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../scripts/common.sh
+source "${IMAGE_DIR}/../../../scripts/common.sh"
 
 OVERLAY_ONLY=0
 for arg in "$@"; do
@@ -17,41 +17,43 @@ for arg in "$@"; do
     fi
 done
 
-LOG_FILE="${OUTPUT_DIR}/build-rust-msvc.log"
+LOG_FILE="${OUTPUT_DIR}/build-rust-gnu.log"
 exec > >(tee -a "${LOG_FILE}") 2>&1
 
-log_step "Starting Rust MSVC Child Image Build: win2025-core-rust-msvc.qcow2"
+log_step "Starting Rust GNU Child Image Build: win2025-core-rust-gnu.qcow2"
 check_kvm
 ensure_base_image
 
-WORK_QCOW2="${BUILD_DIR}/msvc-work.qcow2"
-PAYLOAD_ISO="${BUILD_DIR}/payload-msvc.iso"
-PAYLOAD_DIR="${BUILD_DIR}/payload_msvc_root"
+WORK_QCOW2="${BUILD_DIR}/gnu-work.qcow2"
+PAYLOAD_ISO="${BUILD_DIR}/payload-gnu.iso"
+PAYLOAD_DIR="${BUILD_DIR}/payload_gnu_root"
 
 # Create CoW overlay disk based on Base image
 log_step "[Phase 1/4] Creating transient CoW overlay disk based on win2025-core.qcow2..."
 rm -f "${WORK_QCOW2}"
 qemu-img create -f qcow2 -b "${BASE_IMAGE}" -F qcow2 "${WORK_QCOW2}"
 
-# Prepare Payload ISO with MSVC scripts and installer
-log_step "[Phase 2/4] Assembling Payload ISO (provision-rust-msvc.ps1 + packages)..."
+# Prepare Payload ISO with GNU scripts and offline packages
+log_step "[Phase 2/4] Assembling Payload ISO (provision.ps1 + packages)..."
 rm -rf "${PAYLOAD_DIR}"
 mkdir -p "${PAYLOAD_DIR}/packages"
 
-cp "${TEMPLATES_DIR}/provision-rust-msvc.ps1" "${PAYLOAD_DIR}/child-provision.ps1"
+cp "${IMAGE_DIR}/provision.ps1" "${PAYLOAD_DIR}/child-provision.ps1"
 touch "${PAYLOAD_DIR}/runner.ready"
 
-if [[ -f "${PACKAGES_DIR}/vs_BuildTools.exe" ]]; then
-    cp "${PACKAGES_DIR}/vs_BuildTools.exe" "${PAYLOAD_DIR}/packages/"
-fi
-if [[ -f "${PACKAGES_DIR}/rustup-init.exe" ]]; then
-    cp "${PACKAGES_DIR}/rustup-init.exe" "${PAYLOAD_DIR}/packages/"
-fi
+# Copy packages from local image dir or root packages dir
+for pkg in "w64devkit-x64-2.9.1.7z.exe" "rustup-init.exe"; do
+    if [[ -f "${IMAGE_DIR}/packages/${pkg}" ]]; then
+        cp "${IMAGE_DIR}/packages/${pkg}" "${PAYLOAD_DIR}/packages/"
+    elif [[ -f "${PACKAGES_DIR}/${pkg}" ]]; then
+        cp "${PACKAGES_DIR}/${pkg}" "${PAYLOAD_DIR}/packages/"
+    fi
+done
 
 make_iso "${PAYLOAD_ISO}" "${PAYLOAD_DIR}" "PROVISION"
 
 # Run QEMU to execute child provisioning
-MONITOR_SOCK="${BUILD_DIR}/qemu-monitor-msvc.sock"
+MONITOR_SOCK="${BUILD_DIR}/qemu-monitor-gnu.sock"
 rm -f "${MONITOR_SOCK}"
 
 qemu-system-x86_64 \
@@ -72,14 +74,14 @@ qemu-system-x86_64 \
 log_info "VM provisioning completed and cleanly shut down."
 
 # Finalize image
-log_step "[Phase 4/4] Finalizing Rust MSVC Image..."
+log_step "[Phase 4/4] Finalizing Rust GNU Image..."
 if [[ "${OVERLAY_ONLY}" -eq 1 ]]; then
     log_info "Overlay-only mode: Preserving linked CoW layer..."
-    mv "${WORK_QCOW2}" "${MSVC_IMAGE}"
+    mv "${WORK_QCOW2}" "${GNU_IMAGE}"
     # Rebase backing file to relative path for portability
-    qemu-img rebase -u -b "win2025-core.qcow2" -F qcow2 "${MSVC_IMAGE}" 2>/dev/null || true
+    qemu-img rebase -u -b "win2025-core.qcow2" -F qcow2 "${GNU_IMAGE}" 2>/dev/null || true
 else
-    convert_and_compress "${WORK_QCOW2}" "${MSVC_IMAGE}"
+    convert_and_compress "${WORK_QCOW2}" "${GNU_IMAGE}"
     rm -f "${WORK_QCOW2}"
 fi
 
@@ -87,11 +89,11 @@ rm -f "${PAYLOAD_ISO}"
 rm -rf "${PAYLOAD_DIR}"
 
 # Generate Metadata JSON
-cat << EOF > "${MSVC_METADATA}"
+cat << JSON_EOF > "${GNU_METADATA}"
 {
   "image": {
-    "filename": "$(basename "${MSVC_IMAGE}")",
-    "path": "${MSVC_IMAGE}",
+    "filename": "$(basename "${GNU_IMAGE}")",
+    "path": "${GNU_IMAGE}",
     "format": "qcow2",
     "derived_from": "$(basename "${BASE_IMAGE}")",
     "virtual_size": "${DISK_SIZE}",
@@ -123,17 +125,16 @@ cat << EOF > "${MSVC_METADATA}"
   },
   "toolchains": {
     "rust": {
-      "host_triple": "x86_64-pc-windows-msvc",
+      "host_triple": "x86_64-pc-windows-gnu",
       "channel": "stable",
-      "msvc_dependent": true,
+      "msvc_dependent": false,
       "cargo_home": "C:\\\\Users\\\\${ADMIN_USER}\\\\.cargo",
       "rustup_home": "C:\\\\Users\\\\${ADMIN_USER}\\\\.rustup"
     },
     "c_cpp": {
-      "toolchain": "Visual Studio 2022 Build Tools",
-      "flavor": "MSVC",
-      "install_path": "C:\\\\BuildTools",
-      "tools": ["cl.exe", "link.exe", "vswhere.exe"]
+      "toolchain": "w64devkit",
+      "flavor": "MinGW-w64",
+      "path": "C:\\\\tools\\\\w64devkit\\\\bin"
     }
   },
   "drivers": {
@@ -141,9 +142,9 @@ cat << EOF > "${MSVC_METADATA}"
     "qemu_guest_agent": true
   }
 }
-EOF
+JSON_EOF
 
-log_step "Rust MSVC Image Build Succeeded!"
-echo "==> MSVC QCOW2: ${MSVC_IMAGE}"
-echo "==> Metadata:   ${MSVC_METADATA}"
-qemu-img info "${MSVC_IMAGE}"
+log_step "Rust GNU Image Build Succeeded!"
+echo "==> GNU QCOW2:  ${GNU_IMAGE}"
+echo "==> Metadata:   ${GNU_METADATA}"
+qemu-img info "${GNU_IMAGE}"
