@@ -1,83 +1,112 @@
-# Windows Server 2025 Core (Rust GNU) 基础镜像构建工程
+# Windows Server 2025 Core 树状镜像构建工程
 
 ## 1. 项目简介
-本工程用于在 NixOS (含 QEMU / KVM) 宿主环境下，基于官方 Windows Server 2025 Standard Core 镜像与 VirtIO 驱动集合包，全自动构建轻量化、高性能的 QCOW2 虚拟机基础镜像。
+本工程用于在 NixOS (含 QEMU / KVM) 宿主环境下，基于官方 Windows Server 2025 Standard Core 镜像与 VirtIO 驱动集合包，采用**树状分层构建（Hierarchical Tree Image Architecture）**体系，自动化产出轻量化、高性能的 QCOW2 虚拟机镜像。
 
-镜像默认内置完整的 Rust GNU (`x86_64-pc-windows-gnu`) 编译工具链，不依赖任何 Microsoft Visual C++ (MSVC) 组件。
+镜像树结构如下：
+- **根母盘**：`output/win2025-core.qcow2`（纯净系统底座，含 VirtIO 驱动、Guest Agent、OpenSSH Server、下游配置引导器）
+- **GNU 衍生镜像**：`output/win2025-core-rust-gnu.qcow2`（基于母盘秒级派生，集成 w64devkit MinGW-w64 与 `x86_64-pc-windows-gnu` 工具链）
+- **MSVC 衍生镜像**：`output/win2025-core-rust-msvc.qcow2`（基于母盘秒级派生，集成 Visual Studio 2022 Build Tools 与 `x86_64-pc-windows-msvc` 工具链）
+
+```mermaid
+graph TD
+    ISO["Windows 2025 ISO + VirtIO ISO"] --> BUILD_BASE["build-base.sh"]
+    BUILD_BASE --> BASE[("根母盘<br/><b>win2025-core.qcow2</b>")]
+    
+    BASE -. "CoW 差分层" .-> COW_GNU["gnu-work.qcow2"]
+    BASE -. "CoW 差分层" .-> COW_MSVC["msvc-work.qcow2"]
+    
+    COW_GNU --> BUILD_GNU["build-rust-gnu.sh"]
+    BUILD_GNU --> FINAL_GNU[("Rust GNU 镜像<br/><b>win2025-core-rust-gnu.qcow2</b>")]
+    
+    COW_MSVC --> BUILD_MSVC["build-rust-msvc.sh"]
+    BUILD_MSVC --> FINAL_MSVC[("Rust MSVC 镜像<br/><b>win2025-core-rust-msvc.qcow2</b>")]
+```
 
 ## 2. 核心特性
-- 操作系统：Windows Server 2025 ServerStandardCore (Build 26100.1，纯 Core 模式，无 GUI 桌面)。
-- 纯净 GNU 工具链：集成 w64devkit 便携版 MinGW-w64 (GCC、Binutils、Make) 及 Rustup 官方稳定的 `x86_64-pc-windows-gnu` 工具链，彻底摆脱 MSVC 依赖。
-- 零交互全自动安装：通过定制的 `Autounattend.xml` 自动处理 TPM/SecureBoot 限制绕过、VirtIO 驱动注入、磁盘自动分区格式化、产品密钥跳过与管理员账户首次自动登录。
-- 自闭环自动化流水线：基于原生 Bash、QEMU 与 Devbox 管理的辅助工具，不依赖第三方复杂抽象层（如 Packer）。
-- 虚拟化优化：集成 VirtIO Guest Tools (含 QEMU Guest Agent、Balloon 内存气泡、串口与网卡驱动)，并在镜像交付前执行系统垃圾清理与磁盘 Trim/零填充，产出高压缩比的 QCOW2 镜像。
+- **操作系统底座**：Windows Server 2025 ServerStandardCore (Build 26100.1，纯 Core 模式，无 GUI 桌面)。
+- **Copy-on-Write 增量隔离**：构建子镜像时母盘只读保护，通过 QCOW2 差分工作盘进行软件注入，即使子构建失败也绝不污染母盘。
+- **双工具链生态支持**：
+  - **GNU**：内置便携版 w64devkit (GCC, Binutils, Make) 及 `x86_64-pc-windows-gnu`，完全摆脱 MSVC 依赖。
+  - **MSVC**：内置 Visual Studio 2022 Build Tools (MSVC `cl.exe`, `link.exe`, Windows SDK) 及 `x86_64-pc-windows-msvc`，满足原生 Windows ABI 需求。
+- **通用下游调度器（Provision Runner）**：母盘开机自检挂载的光盘载荷，实现下游脚本秒级自动触发、验证与关机，彻底解耦网络握手。
+- **全自动化运维**：集成 VirtIO Guest Tools (QEMU Guest Agent, NetKVM, Balloon)、默认开启 OpenSSH 服务 (端口 22)，并在收敛前执行磁盘 Trim 与 zlib 高压缩比置备。
 
-## 3. 依赖规范与输入物料
+## 3. 依赖规范与物料准备
 ### 3.1 宿主机依赖
-- NixOS 系统级安装的 QEMU (支持 `qemu-system-x86_64` 及 `qemu-img`，需启用 `/dev/kvm` 硬件加速)。
+- Linux/NixOS 系统级 QEMU (`qemu-system-x86_64`, `qemu-img`，需启用 `/dev/kvm` 硬件加速)。
 - 辅助依赖通过 `devbox.json` 统一管理：
-  - `cdrkit` (提供 `genisoimage`/`mkisofs` 生成辅助引导光盘)
-  - `wimlib` (提供 `wiminfo` 等 WIM/ESD 镜像检查工具)
-  - `dos2unix` (用于 Windows 脚本换行符转换)
+  - `cdrkit` (`genisoimage` 打包辅助光盘)
+  - `wimlib` (WIM/ESD 检查工具)
+  - `dos2unix` (Windows 换行符转换)
 
 ### 3.2 输入物料
-- `ISO/26100.1_SERVERSTANDARD_X64_EN-US.ISO` (Windows Server 2025 Standard 镜像，仅含 Core 卷)
-- `ISO/virtio-win-0.1.302.iso` (VirtIO Windows 驱动集合)
+- `ISO/26100.1_SERVERSTANDARD_X64_EN-US.ISO` (Windows Server 2025 Standard 镜像)
+- `ISO/virtio-win-0.1.302.iso` (VirtIO 驱动集合包)
+- `packages/` 离线缓存（可选，在线模式会自动下载）：
+  - `rustup-init.exe`
+  - `w64devkit-x64-2.9.1.7z.exe`
+  - `vs_BuildTools.exe`
 
 ## 4. 目录结构说明
-- `ISO/`：原始 ISO 介质目录。
-- `templates/`：配置模板目录。
-  - `Autounattend.xml`：Windows Server 2025 Core 无人值守安装应答文件。
-  - `provision.ps1`：虚拟机内部环境部署脚本（VirtIO、MinGW、Rust、Cargo 配置、自检与清理）。
-- `scripts/`：宿主机构建与监控脚本。
-  - `build-windows-qcow2.sh`：主自动化构建流水线入口。
-  - `monitor-boot.py`：处理光盘启动按键的 QEMU Monitor 辅助脚本。
-- `output/`：构建生成目录（包含最终交付的 QCOW2 镜像、元数据配置 `win2025-core-rust-gnu.json` 及 `build.log` 日志）。
+```
+.
+├── ISO/                                 # 原始输入光盘
+├── packages/                            # 本地工具包离线缓存
+├── templates/                           # 应答与配置模板
+│   ├── Autounattend.xml                 # WinPE 安装应答
+│   ├── provision-base.ps1               # 根母盘初始化脚本 (VirtIO, SSH, Runner)
+│   ├── provision-runner.ps1             # 母盘通用下游调度器
+│   ├── provision-rust-gnu.ps1           # Rust GNU 软件栈部署与自验
+│   └── provision-rust-msvc.ps1          # Rust MSVC 软件栈部署与自验
+├── scripts/                             # 构建与编排脚本
+│   ├── common.sh                        # 公共配置、QEMU 参数与辅助函数
+│   ├── monitor-boot.py                  # ISO 引导按键辅助
+│   ├── build-base.sh                    # 构建 win2025-core.qcow2
+│   ├── build-rust-gnu.sh                # 衍生构建 win2025-core-rust-gnu.qcow2
+│   ├── build-rust-msvc.sh               # 衍生构建 win2025-core-rust-msvc.qcow2
+│   └── build.sh                         # 全局统一编排入口
+├── output/                              # 最终交付镜像与 JSON 元数据
+├── devbox.json                          # Devbox 命令与环境定义
+└── docker-compose.yml                   # 容器化环境编排
+```
 
-## 5. 构建与执行
-进入项目根目录后，执行以下命令触发构建：
+## 5. 构建与使用指南
+
+### 5.1 构建命令
+在项目根目录下通过 Devbox 执行构建：
 ```bash
+# 构建整棵镜像树 (Base -> Rust GNU -> Rust MSVC)
 devbox run build
+
+# 或仅构建根母盘
+devbox run build:base
+
+# 或仅构建指定衍生镜像 (母盘不存在时会自动先构建母盘)
+devbox run build:gnu
+devbox run build:msvc
 ```
-或者直接运行构建脚本：
+
+也可直接调用编排脚本：
 ```bash
-bash scripts/build-windows-qcow2.sh
+bash scripts/build.sh all
+bash scripts/build.sh base
+bash scripts/build.sh gnu
+bash scripts/build.sh msvc
+
+# 附加参数：差分模式（保留极小体积的 CoW 差分层，加速本地调试）
+bash scripts/build.sh gnu --overlay-only
 ```
 
-构建流水线包含三个阶段：
-1. 阶段一（Windows Setup）：挂载 Windows ISO、VirtIO 驱动盘及生成的 OEMDRV 辅助光盘，自动完成存储驱动加载、分区格式化及系统镜像写入，完成后虚拟机自动平滑重启。
-2. 阶段二（Provisioning）：从虚拟机磁盘启动，以 Administrator 账户自动登录并执行 `provision.ps1`，完成驱动工具箱安装、MinGW 与 Rust GNU 部署、环境变量注入、编译自测及系统关机。
-3. 阶段三（压缩与收敛）：调用 `qemu-img convert -c` 对磁盘执行深度簇压缩，输出最终的 QCOW2 基础镜像。
+### 5.2 产物规格
+| 镜像文件 | 元数据文件 | 格式 | 压缩体积 | 登录凭据 | 工具链特性 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `output/win2025-core.qcow2` | `output/win2025-core.json` | QCOW2 | ~4.2G | Administrator / Admin1234! | 纯净底座、VirtIO、OpenSSH |
+| `output/win2025-core-rust-gnu.qcow2` | `output/win2025-core-rust-gnu.json` | QCOW2 | ~5.5G | Administrator / Admin1234! | GCC 15 + Rust GNU 稳定版 |
+| `output/win2025-core-rust-msvc.qcow2` | `output/win2025-core-rust-msvc.json` | QCOW2 | ~8.5G | Administrator / Admin1234! | MSVC 2022 + WinSDK + Rust MSVC |
 
-## 6. 产物规格与使用说明
-### 6.1 镜像参数
-- 镜像文件：`output/win2025-core-rust-gnu.qcow2`
-- 元数据文件：`output/win2025-core-rust-gnu.json`（记录账号密码、端口及软件清单）
-- 虚拟大小：64 GiB（精简置备，按需扩展）
-- 压缩后实际体积：约 5.5 GiB
-- 格式：QCOW2 (压缩方式: zlib)
-- 登录凭据：用户名 `Administrator`，密码 `Admin1234!`
-
-### 6.2 凭据与规格配置文件 (JSON)
-在生成 QCOW2 镜像的同时，构建脚本会在同级目录下自动导出 `win2025-core-rust-gnu.json`，方便 CI/CD 流水线或自动化测试直接读取：
-```json
-{
-  "credentials": {
-    "username": "Administrator",
-    "password": "Admin1234!",
-    "auto_logon": true
-  },
-  "network_and_remote": {
-    "ssh": {
-      "enabled": true,
-      "port": 22
-    }
-  }
-}
-```
-
-### 6.3 虚拟机启动示例
-使用 QEMU 启动该镜像的参考命令：
+### 5.3 虚拟机启动示例
+以启动 Rust GNU 镜像为例：
 ```bash
 qemu-system-x86_64 \
     -enable-kvm \
@@ -89,13 +118,5 @@ qemu-system-x86_64 \
     -device virtio-net-pci,netdev=net0 \
     -vnc 127.0.0.1:1
 ```
-- SSH 远程管理：`ssh Administrator@127.0.0.1 -p 2222`
-- VNC 画面查看：`vncviewer 127.0.0.1:5901`
-
-## 7. 关键问题排查与设计要点
-1. 驱动去重避免 0x80070103 错误：
-   Windows Server 2025 (26100 内核) 在 WinPE 阶段对驱动注入执行严格去重。如果应答文件中声明了多个指向同一驱动文件的不同路径，会导致安装程序报 `0x80070103` 错误中断。因此 `Autounattend.xml` 中仅配置单条明确的存储驱动路径 (`E:\viostor\2k25\amd64`)。
-2. 产品密钥跳过：
-   Server Core 镜像在无人值守配置中需要显式设置 `ProductKey` 的 `WillShowUI` 为 `Never`，配合 OEM 声明通道，避免安装中断在密钥输入界面。
-3. Rust GNU 工具链独立性：
-   Rust GNU ABI 编译链接依赖 GCC、Binutils 以及配套 C 运行时头文件。方案内置便携式的 w64devkit，并将 `gcc.exe` 与 `ar.exe` 配置为默认链接器，彻底解耦 MSVC。
+- **SSH 接入**：`ssh Administrator@127.0.0.1 -p 2222`
+- **VNC 画面**：`vncviewer 127.0.0.1:5901`

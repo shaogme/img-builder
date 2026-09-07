@@ -115,7 +115,7 @@
                     <PlainText>true</PlainText>
                 </Password>
                 <Enabled>true</Enabled>
-                <LogonCount>2</LogonCount>
+                <LogonCount>999</LogonCount>
                 <Username>Administrator</Username>
             </AutoLogon>
             <UserAccounts>
@@ -136,8 +136,8 @@
             <FirstLogonCommands>
                 <SynchronousCommand wcm:action="add">
                     <Order>1</Order>
-                    <Description>Run Provisioning Script</Description>
-                    <CommandLine>cmd.exe /c powershell.exe -ExecutionPolicy Bypass -NoProfile -Command "Get-Volume | Where-Object { Test-Path ($_.DriveLetter + ':\provision.ps1') } | ForEach-Object { &amp; ($_.DriveLetter + ':\provision.ps1') }"</CommandLine>
+                    <Description>Run Base Provisioning</Description>
+                    <CommandLine>cmd.exe /c "for %d in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do @if exist %d:\run-provision.cmd (call %d:\run-provision.cmd &amp; exit /b)"</CommandLine>
                 </SynchronousCommand>
             </FirstLogonCommands>
         </component>

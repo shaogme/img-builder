@@ -10,10 +10,11 @@
       "echo 'Welcome to devbox!' > /dev/null"
     ],
     "scripts": {
-      "build": "bash scripts/build-windows-qcow2.sh",
-      "test": [
-        "echo \"Error: no test specified\" && exit 1"
-      ]
+      "build": "bash scripts/build.sh all",
+      "build:base": "bash scripts/build.sh base",
+      "build:gnu": "bash scripts/build.sh gnu",
+      "build:msvc": "bash scripts/build.sh msvc",
+      "clean": "rm -rf build"
     }
   }
 }
