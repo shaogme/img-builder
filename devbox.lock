@@ -101,6 +101,181 @@
       "last_modified": "2026-09-05T11:43:56Z",
       "resolved": "github:NixOS/nixpkgs/0af3d1402dec3fc7e93635e511d1f7428c89cebf?lastModified=1788608636&narHash=sha256-RqeFOwW329f4i1f5QlJgQYwgEZvxIHJsUYlzIBxsKsY%3D"
     },
+    "imagemagick@latest": {
+      "last_modified": "2026-08-29T00:50:12Z",
+      "resolved": "github:NixOS/nixpkgs/e8be7818e19ada32105a8af937a6a473b38167ca#imagemagick",
+      "source": "devbox-search",
+      "version": "7.1.2-29",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/v18pbkzg2jsv6c329lc0gk980hjyfmki-imagemagick-7.1.2-29",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/av4vc4vq7x5is9r76l7wld9xwcmcryab-imagemagick-7.1.2-29-dev"
+            },
+            {
+              "name": "doc",
+              "path": "/nix/store/7h0621qn9k3bq0b3zlni09qhgys8f7ir-imagemagick-7.1.2-29-doc"
+            }
+          ],
+          "store_path": "/nix/store/v18pbkzg2jsv6c329lc0gk980hjyfmki-imagemagick-7.1.2-29"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/syzj9cllhq7nhixb4dn707psc2avpn1g-imagemagick-7.1.2-29",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/sr1iad40rbkbaipv4362mgijrj63vd8r-imagemagick-7.1.2-29-dev"
+            },
+            {
+              "name": "doc",
+              "path": "/nix/store/3vdw59vhcnkv67mlrzmx6x0rckhj5qpa-imagemagick-7.1.2-29-doc"
+            }
+          ],
+          "store_path": "/nix/store/syzj9cllhq7nhixb4dn707psc2avpn1g-imagemagick-7.1.2-29"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/1fj0wg21ba24hv612yg4kqwzxbnyappm-imagemagick-7.1.2-29",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/w9b2wk875bnzmr10v5yflccfizrff7iy-imagemagick-7.1.2-29-dev"
+            },
+            {
+              "name": "doc",
+              "path": "/nix/store/8l8324nl8l7az72xgvckyp1hs1lgj3m2-imagemagick-7.1.2-29-doc"
+            }
+          ],
+          "store_path": "/nix/store/1fj0wg21ba24hv612yg4kqwzxbnyappm-imagemagick-7.1.2-29"
+        }
+      }
+    },
+    "openssh@latest": {
+      "last_modified": "2026-08-27T07:16:00Z",
+      "resolved": "github:NixOS/nixpkgs/c27cdad491a991b11ed731760aa2ef8db0cb0410#openssh",
+      "source": "devbox-search",
+      "version": "10.5p1",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/v0ih1j77i9bvq7nn4r70s32fchgv1k6a-openssh-10.5p1",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/0llp0z6wz970lzhzm9csx4ahnjrjxw9p-openssh-10.5p1-man",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/20m6m81acz0gsmzwff984rbm2wmkdr8j-openssh-10.5p1-dev"
+            }
+          ],
+          "store_path": "/nix/store/v0ih1j77i9bvq7nn4r70s32fchgv1k6a-openssh-10.5p1"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/6dibrdp9lf2p8ap2bf02kywgljh51qca-openssh-10.5p1",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/5mqwhvyg5b54xx49186vxazf29ly5x6y-openssh-10.5p1-man",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/fn1q69a82rz57xmr2y1vx4mbdsbnk3z0-openssh-10.5p1-dev"
+            }
+          ],
+          "store_path": "/nix/store/6dibrdp9lf2p8ap2bf02kywgljh51qca-openssh-10.5p1"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/ggcm0s524bsly3qc7kww945qs7003psf-openssh-10.5p1",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/s9a3xnwfliryd5qsk8kicsz3d6xpny60-openssh-10.5p1-man",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/wy59wl68ndias0dxqj5jx7y0rs040bmw-openssh-10.5p1-dev"
+            }
+          ],
+          "store_path": "/nix/store/ggcm0s524bsly3qc7kww945qs7003psf-openssh-10.5p1"
+        }
+      }
+    },
+    "sshpass@latest": {
+      "last_modified": "2026-08-27T07:16:00Z",
+      "resolved": "github:NixOS/nixpkgs/c27cdad491a991b11ed731760aa2ef8db0cb0410#sshpass",
+      "source": "devbox-search",
+      "version": "1.10",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/847sywnxn0528j4szin53xb9381aapqr-sshpass-1.10",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/847sywnxn0528j4szin53xb9381aapqr-sshpass-1.10"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/6bcaigvf7dz7x9kv3nnxj2cacfjj5h3c-sshpass-1.10",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/6bcaigvf7dz7x9kv3nnxj2cacfjj5h3c-sshpass-1.10"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/30kr31149dx8mcnwnnav03i4fjaw0d09-sshpass-1.10",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/30kr31149dx8mcnwnnav03i4fjaw0d09-sshpass-1.10"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/xwpbf4n3ljnm9rspfhysvr2qvvkgpwdg-sshpass-1.10",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/xwpbf4n3ljnm9rspfhysvr2qvvkgpwdg-sshpass-1.10"
+        }
+      }
+    },
     "wimlib@latest": {
       "last_modified": "2026-08-27T07:16:00Z",
       "resolved": "github:NixOS/nixpkgs/c27cdad491a991b11ed731760aa2ef8db0cb0410#wimlib",

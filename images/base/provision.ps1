@@ -89,7 +89,8 @@ try {
     Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
     Start-Service sshd -ErrorAction SilentlyContinue
     Set-Service -Name sshd -StartupType Automatic -ErrorAction SilentlyContinue
-    New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -ErrorAction SilentlyContinue
+    New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -Profile Any -ErrorAction SilentlyContinue
+    netsh advfirewall firewall add rule name="OpenSSH-Server-In-TCP" dir=in action=allow protocol=TCP localport=22 profile=any | Out-Null
     Write-Host "[Success] OpenSSH Server enabled on port 22." -ForegroundColor Green
 } catch {
     Write-Warning "[Warning] OpenSSH setup notice: $_"

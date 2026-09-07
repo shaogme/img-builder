@@ -137,3 +137,14 @@ qemu-system-x86_64 \
 ```
 - **SSH 接入**：`ssh Administrator@127.0.0.1 -p 2222`
 - **VNC 画面**：`vncviewer 127.0.0.1:5901`
+
+### 5.4 自动化功能自验
+支持全自动拉起隔离瞬态工作层、连接 OpenSSH 并测试系统、驱动与调度器状态：
+```bash
+# 执行根母盘 OpenSSH 连通性与功能自验
+devbox run test:base
+
+# 或直接调用自动化测试脚本
+python3 scripts/test-base-ssh.py
+```
+

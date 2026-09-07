@@ -3,18 +3,22 @@
   "packages": [
     "cdrkit@latest",
     "wimlib@latest",
-    "dos2unix@latest"
+    "dos2unix@latest",
+    "openssh@latest",
+    "sshpass@latest",
+    "imagemagick@latest"
   ],
   "shell": {
     "init_hook": [
       "echo 'Welcome to devbox!' > /dev/null"
     ],
     "scripts": {
-      "build": "bash scripts/build.sh all",
+      "build":      "bash scripts/build.sh all",
       "build:base": "bash images/base/build.sh",
-      "build:gnu": "bash images/rust/gnu/build.sh",
+      "build:gnu":  "bash images/rust/gnu/build.sh",
       "build:msvc": "bash images/rust/msvc/build.sh",
-      "clean": "rm -rf build"
+      "test:base":  "python3 scripts/test-base-ssh.py",
+      "clean":      "rm -rf build"
     }
   }
 }
