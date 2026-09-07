@@ -18,6 +18,8 @@
       "build:gnu":  "bash images/rust/gnu/build.sh",
       "build:msvc": "bash images/rust/msvc/build.sh",
       "test:base":  "python3 scripts/test-base-ssh.py",
+      "test:gnu":   "python3 scripts/test-toolchain-gnu.py",
+      "test:msvc":  "python3 scripts/test-toolchain-msvc.py",
       "clean":      "rm -rf build"
     }
   }

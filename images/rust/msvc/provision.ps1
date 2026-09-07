@@ -82,7 +82,8 @@ $vsArgs = @(
     "--installPath", "C:\BuildTools",
     "--add", "Microsoft.VisualStudio.Workload.VCTools",
     "--add", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-    "--add", "Microsoft.VisualStudio.Component.Windows10SDK.20348"
+    "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100",
+    "--add", "Microsoft.Component.VC.Runtime.UCRTSDK"
 )
 
 Write-Host "[Info] Launching installer with targeted MSVC components..."
@@ -169,9 +170,20 @@ if (!$rustSuccess) {
     throw "Failed to install Rust MSVC toolchain after $maxRetries attempts."
 }
 
-# 4. Configure System PATH
+# 4. Configure System PATH and MSVC Environment
 Write-Host "`n[Step 4/5] Configuring System Environment..." -ForegroundColor Yellow
 $cargoBin = "C:\Users\Administrator\.cargo\bin"
+$vcvars64 = "C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+if (Test-Path $vcvars64) {
+    Write-Host "[Info] Persisting MSVC 64-bit environment from vcvars64.bat..."
+    $envVars = cmd.exe /c "call `"$vcvars64`" && set"
+    foreach ($line in $envVars) {
+        if ($line -match "^(INCLUDE|LIB|LIBPATH|WindowsSdkDir|WindowsSDKVersion|UniversalCRTSdkDir|UCRTVersion)=(.*)$") {
+            [Environment]::SetEnvironmentVariable($matches[1], $matches[2], [EnvironmentVariableTarget]::Machine)
+            [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
+        }
+    }
+}
 $currentMachinePath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
 if ($currentMachinePath -notlike "*$cargoBin*") {
     $currentMachinePath = "$cargoBin;$currentMachinePath"
@@ -193,8 +205,8 @@ try {
 
     $vsDevCmd = "C:\BuildTools\Common7\Tools\VsDevCmd.bat"
     if (Test-Path $vsDevCmd) {
-        Write-Host "[Info] Initializing MSVC environment via VsDevCmd.bat..."
-        cmd.exe /c "call `"$vsDevCmd`" && set" | ForEach-Object {
+        Write-Host "[Info] Initializing MSVC environment via VsDevCmd.bat (-arch=x64)..."
+        cmd.exe /c "call `"$vsDevCmd`" -arch=x64 && set" | ForEach-Object {
             if ($_ -match "^([^=]+)=(.*)$") {
                 [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
             }
@@ -228,6 +240,7 @@ try {
 }
 
 # Cleanup
+Get-Process | Where-Object { $_.ProcessName -match '^(vctip|BackgroundDownload|ServiceHub.*)$' } | Stop-Process -Force -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "C:\ProgramData\Package Cache\*" -ErrorAction SilentlyContinue
 Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "C:\Windows\SoftwareDistribution\Download\*" -ErrorAction SilentlyContinue
@@ -235,6 +248,7 @@ Remove-Item -Recurse -Force "$env:TEMP\*" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "C:\Windows\Temp\*" -ErrorAction SilentlyContinue
 Optimize-Volume -DriveLetter C -Defrag -Verbose -ErrorAction SilentlyContinue
 
+Get-Process | Where-Object { $_.ProcessName -match '^(vctip|BackgroundDownload|ServiceHub.*)$' } | Stop-Process -Force -ErrorAction SilentlyContinue
 Write-Host "`n[Success] Rust MSVC provisioning completed successfully!" -ForegroundColor Green
 Stop-Transcript
 exit 0

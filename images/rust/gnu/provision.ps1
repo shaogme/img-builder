@@ -117,6 +117,17 @@ Write-Host "`n[Step 4/5] Configuring System Environment and Cargo settings..." -
 $mingwBin = "$mingwDest\bin"
 $cargoBin = "C:\Users\Administrator\.cargo\bin"
 
+# Ensure libgcc_eh.a exists for rustc MinGW compatibility
+$gccLibDir = Get-ChildItem -Path "$mingwDest\lib\gcc\x86_64-w64-mingw32" -Directory | Select-Object -First 1
+if ($gccLibDir) {
+    $libgcc = "$($gccLibDir.FullName)\libgcc.a"
+    $libgccEh = "$($gccLibDir.FullName)\libgcc_eh.a"
+    if ((Test-Path $libgcc) -and !(Test-Path $libgccEh)) {
+        Copy-Item -Path $libgcc -Destination $libgccEh -Force
+        Write-Host "[Info] Created $libgccEh for rustc MinGW compatibility"
+    }
+}
+
 $currentMachinePath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
 $newEntries = @($mingwBin, $cargoBin)
 foreach ($entry in $newEntries) {
