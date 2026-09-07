@@ -1,0 +1,143 @@
+{
+  "lockfile_version": "1",
+  "packages": {
+    "cdrkit@latest": {
+      "last_modified": "2026-08-27T07:16:00Z",
+      "resolved": "github:NixOS/nixpkgs/c27cdad491a991b11ed731760aa2ef8db0cb0410#cdrkit",
+      "source": "devbox-search",
+      "version": "1.1.11-4",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/y22a04f1ibnll2x3x8s11kgl3mj3wv1m-cdrkit-1.1.11-4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/y22a04f1ibnll2x3x8s11kgl3mj3wv1m-cdrkit-1.1.11-4"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/y4l77lcnzdb2526vh31k1pgng0s0wi0k-cdrkit-1.1.11-4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/y4l77lcnzdb2526vh31k1pgng0s0wi0k-cdrkit-1.1.11-4"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/8pvnwmklfg6q5b8wv6lnzhk5lhf7032i-cdrkit-1.1.11-4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/8pvnwmklfg6q5b8wv6lnzhk5lhf7032i-cdrkit-1.1.11-4"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/gpjwc849r071x0q6lq6k3j5l9r0bzm30-cdrkit-1.1.11-4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/gpjwc849r071x0q6lq6k3j5l9r0bzm30-cdrkit-1.1.11-4"
+        }
+      }
+    },
+    "dos2unix@latest": {
+      "last_modified": "2026-08-27T07:16:00Z",
+      "resolved": "github:NixOS/nixpkgs/c27cdad491a991b11ed731760aa2ef8db0cb0410#dos2unix",
+      "source": "devbox-search",
+      "version": "7.5.5",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/3vc0amy2dhjsb03iby445c1xgnf7px7w-dos2unix-7.5.5",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/3vc0amy2dhjsb03iby445c1xgnf7px7w-dos2unix-7.5.5"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/i8ih77ndxx2vk7icy1y01aq2m0xdxfax-dos2unix-7.5.5",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/i8ih77ndxx2vk7icy1y01aq2m0xdxfax-dos2unix-7.5.5"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/fhw7lhfds4bwj4x6ykxhbpfbbcp90cl1-dos2unix-7.5.5",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/fhw7lhfds4bwj4x6ykxhbpfbbcp90cl1-dos2unix-7.5.5"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/1lcs010hxqylygq6sb1wkdzw8s8xdsww-dos2unix-7.5.5",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/1lcs010hxqylygq6sb1wkdzw8s8xdsww-dos2unix-7.5.5"
+        }
+      }
+    },
+    "github:NixOS/nixpkgs/nixpkgs-unstable": {
+      "last_modified": "2026-09-05T11:43:56Z",
+      "resolved": "github:NixOS/nixpkgs/0af3d1402dec3fc7e93635e511d1f7428c89cebf?lastModified=1788608636&narHash=sha256-RqeFOwW329f4i1f5QlJgQYwgEZvxIHJsUYlzIBxsKsY%3D"
+    },
+    "wimlib@latest": {
+      "last_modified": "2026-08-27T07:16:00Z",
+      "resolved": "github:NixOS/nixpkgs/c27cdad491a991b11ed731760aa2ef8db0cb0410#wimlib",
+      "source": "devbox-search",
+      "version": "1.14.5",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/kwqca1a0y6dmsai6wwndqhpx3mfnfa6n-wimlib-1.14.5",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/kwqca1a0y6dmsai6wwndqhpx3mfnfa6n-wimlib-1.14.5"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/av463hb0qly5n7amnf12k1r4hmz1ca4f-wimlib-1.14.5",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/av463hb0qly5n7amnf12k1r4hmz1ca4f-wimlib-1.14.5"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/v2i1s7iz5gm3grnr6s8zzx3978agcc1r-wimlib-1.14.5",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/v2i1s7iz5gm3grnr6s8zzx3978agcc1r-wimlib-1.14.5"
+        }
+      }
+    }
+  }
+}
