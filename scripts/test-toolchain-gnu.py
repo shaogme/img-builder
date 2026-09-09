@@ -180,6 +180,38 @@ def main():
         passed = code == 0 and "RESOLVED_BIN:" in out and ".cargo" in out.lower() and "Hello, world!" in out
         record("Cargo Install Target in PATH & Direct Binary Execution", passed, out)
 
+        # 10. Visual C++ Redistributable (vc_redist)
+        log("10. Visual C++ Redistributable Verification", "INFO")
+        code, out, err = ssh_exec('powershell -NoProfile -Command "Test-Path C:\\Windows\\System32\\vcruntime140.dll"')
+        print(f"Output: {out}\n")
+        record("Visual C++ Redistributable (vcruntime140.dll)", code == 0 and "True" in out, "vcruntime140.dll in System32")
+
+        # 11. cargo-binstall
+        log("11. cargo-binstall Tool Verification", "INFO")
+        code, out, err = ssh_exec('cargo binstall -V')
+        print(f"Output: {out}\n")
+        record("cargo-binstall Tool", code == 0 and "cargo-binstall" in out.lower() or code == 0 and any(c.isdigit() for c in out), out)
+
+        # 12. Tools Installed via cargo-binstall
+        log("12. Cargo Ecosystem Tools Verification (Installed via cargo-binstall)", "INFO")
+        binstall_checks = [
+            ("sccache", "sccache --version"),
+            ("cargo-nextest", "cargo nextest --version"),
+            ("cargo-sweep", "cargo sweep --version"),
+            ("cargo-geiger", "cargo geiger --version"),
+            ("cargo-audit", "cargo audit --version"),
+            ("flamegraph", "cargo flamegraph --version"),
+            ("samply", "samply --version"),
+            ("cargo-show-asm", "cargo asm --version"),
+            ("cargo-expand", "cargo expand --version"),
+            ("cargo-bloat", "cargo bloat --version"),
+        ]
+        for tool_name, tool_cmd in binstall_checks:
+            code, out, err = ssh_exec(tool_cmd)
+            first_line = out.splitlines()[0] if out else err
+            print(f"[{tool_name}]: {first_line}")
+            record(f"Tool: {tool_name} (via cargo-binstall)", code == 0, first_line)
+
         # Shutdown
         log("Shutting down VM...", "STEP")
         ssh_exec('powershell -NoProfile -Command "Stop-Computer -Force"', timeout=10)

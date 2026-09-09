@@ -33,22 +33,13 @@ log_step "[Phase 1/4] Creating transient CoW overlay disk based on win2025-core.
 rm -f "${WORK_QCOW2}"
 qemu-img create -f qcow2 -b "${BASE_IMAGE}" -F qcow2 "${WORK_QCOW2}"
 
-# Prepare Payload ISO with GNU scripts and offline packages
-log_step "[Phase 2/4] Assembling Payload ISO (provision.ps1 + packages)..."
+# Prepare Payload ISO with GNU provision script
+log_step "[Phase 2/4] Assembling Payload ISO (provision.ps1)..."
 rm -rf "${PAYLOAD_DIR}"
-mkdir -p "${PAYLOAD_DIR}/packages"
+mkdir -p "${PAYLOAD_DIR}"
 
 cp "${IMAGE_DIR}/provision.ps1" "${PAYLOAD_DIR}/child-provision.ps1"
 touch "${PAYLOAD_DIR}/runner.ready"
-
-# Copy packages from local image dir or root packages dir
-for pkg in "w64devkit-x64-2.9.1.7z.exe" "rustup-init.exe"; do
-    if [[ -f "${IMAGE_DIR}/packages/${pkg}" ]]; then
-        cp "${IMAGE_DIR}/packages/${pkg}" "${PAYLOAD_DIR}/packages/"
-    elif [[ -f "${PACKAGES_DIR}/${pkg}" ]]; then
-        cp "${PACKAGES_DIR}/${pkg}" "${PAYLOAD_DIR}/packages/"
-    fi
-done
 
 make_iso "${PAYLOAD_ISO}" "${PAYLOAD_DIR}" "PROVISION"
 
@@ -129,12 +120,29 @@ cat << JSON_EOF > "${GNU_METADATA}"
       "channel": "stable",
       "msvc_dependent": false,
       "cargo_home": "C:\\\\Users\\\\${ADMIN_USER}\\\\.cargo",
-      "rustup_home": "C:\\\\Users\\\\${ADMIN_USER}\\\\.rustup"
+      "rustup_home": "C:\\\\Users\\\\${ADMIN_USER}\\\\.rustup",
+      "cargo_binstall": true,
+      "installed_tools": [
+        "sccache",
+        "cargo-nextest",
+        "cargo-sweep",
+        "cargo-geiger",
+        "cargo-audit",
+        "flamegraph",
+        "samply",
+        "cargo-show-asm",
+        "cargo-expand",
+        "cargo-bloat"
+      ]
     },
     "c_cpp": {
       "toolchain": "w64devkit",
       "flavor": "MinGW-w64",
       "path": "C:\\\\tools\\\\w64devkit\\\\bin"
+    },
+    "vc_redist": {
+      "installed": true,
+      "version": "2015-2022 x64"
     }
   },
   "drivers": {

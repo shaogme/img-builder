@@ -22,7 +22,7 @@ Unregister-ScheduledTask -TaskName "ImageProvisionRunner" -Confirm:$false -Error
 Start-Transcript -Path "C:\provision-rust-gnu.log" -Append
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host " [Step 1/5] Starting Rust GNU Provisioning..." -ForegroundColor Green
+Write-Host " [Step 1/6] Starting Rust GNU Provisioning..." -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # 1. Locate payload media drive
@@ -45,39 +45,39 @@ $env:CARGO_HOME = "C:\Users\Administrator\.cargo"
 $env:RUSTUP_HOME = "C:\Users\Administrator\.rustup"
 
 # 2. Extract or install w64devkit (MinGW-w64 GCC toolchain)
-Write-Host "`n[Step 2/5] Deploying MinGW-w64 toolchain (w64devkit: gcc, ld, ar, make)..." -ForegroundColor Yellow
+Write-Host "`n[Step 2/6] Deploying MinGW-w64 toolchain (w64devkit: gcc, ld, ar, make)..." -ForegroundColor Yellow
 $mingwDest = "$toolsDir\w64devkit"
-$localDevkitSfx = "$mediaDrive\packages\w64devkit-x64-2.9.1.7z.exe"
-$localDevkitZip = "$mediaDrive\packages\w64devkit.zip"
+Write-Host "[Info] Downloading latest w64devkit from GitHub..."
+$url = "https://github.com/skeeto/w64devkit/releases/latest/download/w64devkit.zip"
+$tmpZip = "$env:TEMP\w64devkit.zip"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-WebRequest -Uri $url -OutFile $tmpZip -UseBasicParsing
+Write-Host "[Info] Expanding w64devkit.zip..."
+Expand-Archive -Path $tmpZip -DestinationPath $toolsDir -Force
+Remove-Item -Force $tmpZip -ErrorAction SilentlyContinue
 
-if (Test-Path $localDevkitSfx) {
-    Write-Host "[Info] Extracting w64devkit from local SFX archive: $localDevkitSfx..."
-    $proc = Start-Process -FilePath $localDevkitSfx -ArgumentList "-y -aoa -o`"$toolsDir`"" -Wait -PassThru -NoNewWindow
-    Write-Host "[Info] SFX extraction completed with exit code $($proc.ExitCode)"
-} elseif (Test-Path $localDevkitZip) {
-    Write-Host "[Info] Expanding w64devkit.zip from media..."
-    Expand-Archive -Path $localDevkitZip -DestinationPath $toolsDir -Force
-} else {
-    Write-Host "[Info] Downloading w64devkit from GitHub..."
-    $url = "https://github.com/skeeto/w64devkit/releases/download/v2.9.1/w64devkit-x64-2.9.1.7z.exe"
-    $tmpSfx = "$env:TEMP\w64devkit.7z.exe"
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $url -OutFile $tmpSfx -UseBasicParsing
-    Start-Process -FilePath $tmpSfx -ArgumentList "-y -o`"$toolsDir`"" -Wait
-    Remove-Item -Force $tmpSfx -ErrorAction SilentlyContinue
+# 3. Deploy Microsoft Visual C++ Redistributable (vc_redist.x64)
+Write-Host "`n[Step 3/6] Deploying Microsoft Visual C++ Redistributable (x64)..." -ForegroundColor Yellow
+$vcRedistExe = "$env:TEMP\vc_redist.x64.exe"
+Write-Host "[Info] Downloading latest vc_redist.x64.exe from Microsoft..."
+Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $vcRedistExe -UseBasicParsing
+
+if (Test-Path $vcRedistExe) {
+    Write-Host "[Info] Executing vc_redist.x64 installer silently..."
+    $vcProc = Start-Process -FilePath $vcRedistExe -ArgumentList "/install /quiet /norestart" -Wait -PassThru -NoNewWindow
+    if ($vcProc.ExitCode -eq 0 -or $vcProc.ExitCode -eq 3010) {
+        Write-Host "[Success] Visual C++ Redistributable installed successfully (exit code $($vcProc.ExitCode))" -ForegroundColor Green
+    } else {
+        Write-Warning "vc_redist installer exited with code $($vcProc.ExitCode)"
+    }
+    Remove-Item -Force $vcRedistExe -ErrorAction SilentlyContinue
 }
 
-# 3. Install Rustup and x86_64-pc-windows-gnu toolchain
-Write-Host "`n[Step 3/5] Installing Rust GNU toolchain (x86_64-pc-windows-gnu)..." -ForegroundColor Yellow
-$localRustup = "$mediaDrive\packages\rustup-init.exe"
+# 4. Install Rustup and x86_64-pc-windows-gnu toolchain
+Write-Host "`n[Step 4/6] Installing Rust GNU toolchain (x86_64-pc-windows-gnu)..." -ForegroundColor Yellow
 $rustupExe = "$env:TEMP\rustup-init.exe"
-
-if (Test-Path $localRustup) {
-    Copy-Item $localRustup -Destination $rustupExe -Force
-} else {
-    Write-Host "[Info] Downloading rustup-init.exe..."
-    Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile $rustupExe -UseBasicParsing
-}
+Write-Host "[Info] Downloading latest rustup-init.exe..."
+Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile $rustupExe -UseBasicParsing
 
 Write-Host "[Info] Waiting for network connectivity to static.rust-lang.org..."
 for ($attempt = 1; $attempt -le 20; $attempt++) {
@@ -112,8 +112,8 @@ if (!$rustSuccess) {
     throw "Failed to install Rust GNU toolchain after $maxRetries attempts."
 }
 
-# 4. Configure System PATH and Cargo Config
-Write-Host "`n[Step 4/5] Configuring System Environment and Cargo settings..." -ForegroundColor Yellow
+# 5. Configure System PATH, Cargo Config, and Deploy cargo-binstall & Ecosystem Tools
+Write-Host "`n[Step 5/6] Configuring System Environment and Deploying cargo-binstall..." -ForegroundColor Yellow
 $mingwBin = "$mingwDest\bin"
 $cargoBin = "C:\Users\Administrator\.cargo\bin"
 
@@ -148,8 +148,54 @@ ar = "ar"
 Set-Content -Path "$cargoHome\config.toml" -Value $cargoConfig -Encoding UTF8
 Write-Host "[Info] Cargo config written to $cargoHome\config.toml"
 
-# 5. Verification Self-Test
-Write-Host "`n[Step 5/5] Running Toolchain Self-Test..." -ForegroundColor Yellow
+# Deploy cargo-binstall
+Write-Host "`n[Info] Downloading latest cargo-binstall from GitHub..." -ForegroundColor Yellow
+$binstallExe = "$cargoBin\cargo-binstall.exe"
+$tmpZip = "$env:TEMP\cargo-binstall.zip"
+Invoke-WebRequest -Uri "https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-pc-windows-msvc.zip" -OutFile $tmpZip -UseBasicParsing
+Expand-Archive -Path $tmpZip -DestinationPath $cargoBin -Force
+Remove-Item -Force $tmpZip -ErrorAction SilentlyContinue
+
+if (!(Test-Path $binstallExe)) {
+    throw "cargo-binstall.exe failed to deploy to $cargoBin!"
+}
+Write-Host "[Success] cargo-binstall deployed at $binstallExe" -ForegroundColor Green
+
+# Install Cargo tools using cargo-binstall
+$binstallTools = @(
+    "sccache",
+    "cargo-nextest",
+    "cargo-sweep",
+    "cargo-geiger",
+    "cargo-audit",
+    "flamegraph",
+    "samply",
+    "cargo-show-asm",
+    "cargo-expand",
+    "cargo-bloat"
+)
+
+Write-Host "`n[Info] Installing tools using cargo-binstall: $($binstallTools -join ', ')..." -ForegroundColor Yellow
+foreach ($tool in $binstallTools) {
+    Write-Host "[Binstall] Installing $tool..."
+    $installed = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $proc = Start-Process -FilePath $binstallExe -ArgumentList "--no-confirm --targets x86_64-pc-windows-msvc $tool" -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -eq 0) {
+            $installed = $true
+            Write-Host "[Success] $tool installed successfully." -ForegroundColor Green
+            break
+        }
+        Write-Warning "Failed to install $tool (attempt $attempt/3, exit code $($proc.ExitCode)). Retrying in 5s..."
+        Start-Sleep -Seconds 5
+    }
+    if (!$installed) {
+        throw "Failed to install $tool via cargo-binstall after 3 attempts."
+    }
+}
+
+# 6. Verification Self-Test
+Write-Host "`n[Step 6/6] Running Toolchain Self-Test..." -ForegroundColor Yellow
 try {
     Write-Host "[Check] GCC:"
     & "$mingwBin\gcc.exe" --version | Select-Object -First 1
@@ -157,6 +203,28 @@ try {
     & "$cargoBin\rustc.exe" -Vv
     Write-Host "[Check] Cargo:"
     & "$cargoBin\cargo.exe" -V
+
+    Write-Host "[Check] Visual C++ Redistributable:"
+    if (Test-Path "C:\Windows\System32\vcruntime140.dll") {
+        Write-Host "vcruntime140.dll present in System32." -ForegroundColor Green
+    } else {
+        throw "vcruntime140.dll missing from System32!"
+    }
+
+    Write-Host "[Check] cargo-binstall:"
+    & $binstallExe -V
+
+    Write-Host "[Check] Tools installed via cargo-binstall:"
+    & "$cargoBin\sccache.exe" --version
+    & "$cargoBin\cargo-nextest.exe" --version
+    & "$cargoBin\cargo-sweep.exe" --version
+    & "$cargoBin\cargo-geiger.exe" --version
+    & "$cargoBin\cargo-audit.exe" --version
+    & "$cargoBin\cargo-flamegraph.exe" --version
+    & "$cargoBin\samply.exe" --version
+    & "$cargoBin\cargo-asm.exe" --version
+    & "$cargoBin\cargo-expand.exe" --version
+    & "$cargoBin\cargo-bloat.exe" --version
 
     $testProject = "$env:TEMP\rust_verify_project"
     if (Test-Path $testProject) { Remove-Item -Recurse -Force $testProject }

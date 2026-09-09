@@ -22,7 +22,7 @@ Unregister-ScheduledTask -TaskName "ImageProvisionRunner" -Confirm:$false -Error
 Start-Transcript -Path "C:\provision-rust-msvc.log" -Append
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host " [Step 1/5] Starting Rust MSVC Provisioning..." -ForegroundColor Green
+Write-Host " [Step 1/6] Starting Rust MSVC Provisioning..." -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # 1. Locate payload media drive
@@ -61,16 +61,10 @@ for ($attempt = 1; $attempt -le 30; $attempt++) {
 }
 
 # 2. Deploy Visual Studio Build Tools 2022
-Write-Host "`n[Step 2/5] Deploying Visual Studio 2022 Build Tools (MSVC & Windows SDK)..." -ForegroundColor Yellow
-$localVsExe = "$mediaDrive\packages\vs_BuildTools.exe"
+Write-Host "`n[Step 2/6] Deploying Visual Studio 2022 Build Tools (MSVC & Windows SDK)..." -ForegroundColor Yellow
 $vsExe = "C:\Windows\Temp\vs_BuildTools.exe"
-
-if (Test-Path $localVsExe) {
-    Copy-Item $localVsExe -Destination $vsExe -Force
-} else {
-    Write-Host "[Info] Downloading vs_BuildTools.exe from Microsoft..."
-    Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vs_BuildTools.exe" -OutFile $vsExe -UseBasicParsing
-}
+Write-Host "[Info] Downloading latest vs_BuildTools.exe from Microsoft..."
+Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vs_BuildTools.exe" -OutFile $vsExe -UseBasicParsing
 
 Write-Host "[Info] Running Visual Studio Build Tools non-interactive installation..."
 $vsArgs = @(
@@ -126,16 +120,10 @@ if ($exitCode -eq 0 -or $exitCode -eq 3010) {
 Remove-Item -Force $vsExe -ErrorAction SilentlyContinue
 
 # 3. Install Rustup and x86_64-pc-windows-msvc toolchain
-Write-Host "`n[Step 3/5] Installing Rust MSVC toolchain (x86_64-pc-windows-msvc)..." -ForegroundColor Yellow
-$localRustup = "$mediaDrive\packages\rustup-init.exe"
+Write-Host "`n[Step 3/6] Installing Rust MSVC toolchain (x86_64-pc-windows-msvc)..." -ForegroundColor Yellow
 $rustupExe = "C:\Windows\Temp\rustup-init.exe"
-
-if (Test-Path $localRustup) {
-    Copy-Item $localRustup -Destination $rustupExe -Force
-} else {
-    Write-Host "[Info] Downloading rustup-init.exe..."
-    Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile $rustupExe -UseBasicParsing
-}
+Write-Host "[Info] Downloading latest rustup-init.exe..."
+Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile $rustupExe -UseBasicParsing
 
 Write-Host "[Info] Waiting for network connectivity to static.rust-lang.org..."
 for ($attempt = 1; $attempt -le 20; $attempt++) {
@@ -171,7 +159,7 @@ if (!$rustSuccess) {
 }
 
 # 4. Configure System PATH and MSVC Environment
-Write-Host "`n[Step 4/5] Configuring System Environment..." -ForegroundColor Yellow
+Write-Host "`n[Step 4/6] Configuring System Environment..." -ForegroundColor Yellow
 $cargoBin = "C:\Users\Administrator\.cargo\bin"
 $vcvars64 = "C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 if (Test-Path $vcvars64) {
@@ -191,8 +179,54 @@ if ($currentMachinePath -notlike "*$cargoBin*") {
 }
 $env:Path = "$cargoBin;" + $env:Path
 
-# 5. Verification Self-Test
-Write-Host "`n[Step 5/5] Running Toolchain Self-Test..." -ForegroundColor Yellow
+# 5. Deploy cargo-binstall and Cargo Ecosystem Tools
+Write-Host "`n[Step 5/6] Downloading latest cargo-binstall from GitHub..." -ForegroundColor Yellow
+$binstallExe = "$cargoBin\cargo-binstall.exe"
+$tmpZip = "$env:TEMP\cargo-binstall.zip"
+Invoke-WebRequest -Uri "https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-pc-windows-msvc.zip" -OutFile $tmpZip -UseBasicParsing
+Expand-Archive -Path $tmpZip -DestinationPath $cargoBin -Force
+Remove-Item -Force $tmpZip -ErrorAction SilentlyContinue
+
+if (!(Test-Path $binstallExe)) {
+    throw "cargo-binstall.exe failed to deploy to $cargoBin!"
+}
+Write-Host "[Success] cargo-binstall deployed at $binstallExe" -ForegroundColor Green
+
+# Install Cargo tools using cargo-binstall
+$binstallTools = @(
+    "sccache",
+    "cargo-nextest",
+    "cargo-sweep",
+    "cargo-geiger",
+    "cargo-audit",
+    "flamegraph",
+    "samply",
+    "cargo-show-asm",
+    "cargo-expand",
+    "cargo-bloat"
+)
+
+Write-Host "`n[Info] Installing tools using cargo-binstall: $($binstallTools -join ', ')..." -ForegroundColor Yellow
+foreach ($tool in $binstallTools) {
+    Write-Host "[Binstall] Installing $tool..."
+    $installed = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $proc = Start-Process -FilePath $binstallExe -ArgumentList "--no-confirm --targets x86_64-pc-windows-msvc $tool" -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -eq 0) {
+            $installed = $true
+            Write-Host "[Success] $tool installed successfully." -ForegroundColor Green
+            break
+        }
+        Write-Warning "Failed to install $tool (attempt $attempt/3, exit code $($proc.ExitCode)). Retrying in 5s..."
+        Start-Sleep -Seconds 5
+    }
+    if (!$installed) {
+        throw "Failed to install $tool via cargo-binstall after 3 attempts."
+    }
+}
+
+# 6. Verification Self-Test
+Write-Host "`n[Step 6/6] Running Toolchain Self-Test..." -ForegroundColor Yellow
 try {
     # Check vswhere and load VS Developer environment
     $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -217,6 +251,21 @@ try {
     & "$cargoBin\rustc.exe" -Vv
     Write-Host "[Check] Cargo:"
     & "$cargoBin\cargo.exe" -V
+
+    Write-Host "[Check] cargo-binstall:"
+    & $binstallExe -V
+
+    Write-Host "[Check] Tools installed via cargo-binstall:"
+    & "$cargoBin\sccache.exe" --version
+    & "$cargoBin\cargo-nextest.exe" --version
+    & "$cargoBin\cargo-sweep.exe" --version
+    & "$cargoBin\cargo-geiger.exe" --version
+    & "$cargoBin\cargo-audit.exe" --version
+    & "$cargoBin\cargo-flamegraph.exe" --version
+    & "$cargoBin\samply.exe" --version
+    & "$cargoBin\cargo-asm.exe" --version
+    & "$cargoBin\cargo-expand.exe" --version
+    & "$cargoBin\cargo-bloat.exe" --version
 
     $testProject = "$env:TEMP\rust_verify_msvc"
     if (Test-Path $testProject) { Remove-Item -Recurse -Force $testProject }

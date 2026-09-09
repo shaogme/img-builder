@@ -43,16 +43,12 @@ graph TD
 ### 3.2 输入物料
 - `ISO/26100.1_SERVERSTANDARD_X64_EN-US.ISO` (Windows Server 2025 Standard 镜像)
 - `ISO/virtio-win-0.1.302.iso` (VirtIO 驱动集合包)
-- `packages/` 离线缓存（可选，在线模式会自动下载）：
-  - `rustup-init.exe`
-  - `w64devkit-x64-2.9.1.7z.exe`
-  - `vs_BuildTools.exe`
+- 所有开发依赖与工具链（w64devkit、Visual Studio Build Tools、vc_redist、Rustup、cargo-binstall 及 10 大 Rust CLI 工具）均在构建过程中**全自动在线动态拉取最新发布版本**，严禁并杜绝任何固定版本的硬编码。
 
 ## 4. 目录结构说明
 ```
 .
 ├── ISO/                                 # 原始输入光盘 (Windows ISO + VirtIO ISO)
-├── packages/                            # 本地工具包离线缓存 (支持全局或各子镜像按需存放)
 ├── images/                              # 模块化镜像定义目录
 │   ├── base/                            # 根母盘定义 (win2025-core.qcow2)
 │   │   ├── Autounattend.xml             # WinPE 无人值守应答
@@ -119,8 +115,8 @@ bash scripts/build.sh gnu --overlay-only
 | 镜像文件 | 元数据文件 | 格式 | 压缩体积 | 登录凭据 | 工具链特性 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `output/win2025-core.qcow2` | `output/win2025-core.json` | QCOW2 | ~4.2G | Administrator / Admin1234! | 纯净底座、VirtIO、OpenSSH |
-| `output/win2025-core-rust-gnu.qcow2` | `output/win2025-core-rust-gnu.json` | QCOW2 | ~5.5G | Administrator / Admin1234! | GCC 15 + Rust GNU 稳定版 |
-| `output/win2025-core-rust-msvc.qcow2` | `output/win2025-core-rust-msvc.json` | QCOW2 | ~8.5G | Administrator / Admin1234! | MSVC 2022 + WinSDK + Rust MSVC |
+| `output/win2025-core-rust-gnu.qcow2` | `output/win2025-core-rust-gnu.json` | QCOW2 | ~5.8G | Administrator / Admin1234! | GCC (w64devkit 最新版) + Rust GNU 稳定版 + VC Redist + cargo-binstall & 10大常用工具 |
+| `output/win2025-core-rust-msvc.qcow2` | `output/win2025-core-rust-msvc.json` | QCOW2 | ~8.5G | Administrator / Admin1234! | MSVC (最新版) + WinSDK + Rust MSVC 稳定版 + cargo-binstall & 10大常用工具 |
 
 ### 5.3 虚拟机启动示例
 以启动 Rust GNU 镜像为例：
@@ -144,10 +140,10 @@ qemu-system-x86_64 \
 # 执行根母盘基础功能自验
 devbox run test:base
 
-# 执行 Rust GNU 衍生镜像工具链自验 (GCC, G++, Make, Rustc GNU, Cargo, C/C++/Rust 编译运行, cargo install 目标 PATH 执行)
+# 执行 Rust GNU 衍生镜像工具链自验 (GCC, G++, Make, Rustc GNU, Cargo, C/C++/Rust 编译运行, cargo-binstall, sccache, cargo-nextest, cargo-sweep, cargo-geiger, cargo-audit, flamegraph, samply, cargo-show-asm, cargo-expand, cargo-bloat)
 devbox run test:gnu
 
-# 执行 Rust MSVC 衍生镜像工具链自验 (VS 2022 Build Tools, cl.exe, link.exe, Rustc MSVC, Cargo, C++/Rust 编译运行, cargo install 目标 PATH 执行)
+# 执行 Rust MSVC 衍生镜像工具链自验 (VS 2022 Build Tools, cl.exe, link.exe, Rustc MSVC, Cargo, C++/Rust 编译运行, cargo-binstall, sccache, cargo-nextest, cargo-sweep, cargo-geiger, cargo-audit, flamegraph, samply, cargo-show-asm, cargo-expand, cargo-bloat)
 devbox run test:msvc
 ```
 
