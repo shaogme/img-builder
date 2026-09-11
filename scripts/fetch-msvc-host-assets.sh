@@ -1,0 +1,1 @@
+fetch-msvc-assets.sh

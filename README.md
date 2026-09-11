@@ -25,11 +25,14 @@ graph TD
 
 ## 2. 核心特性
 - **操作系统底座**：Windows Server 2025 ServerStandardCore (Build 26100.1，纯 Core 模式，无 GUI 桌面)。
+- **物理级断网构建（100% Offline VM Builds）**：所有母盘与子镜像构建 QEMU 虚拟机一律使用 `-nic none` 物理断网，构建期彻底告别外部网络波动、API 限流与 DNS 故障。
+- **宿主机物料统一预拉取（Host Pre-fetching）**：编译器、工具包及二进制物料全部在构建前由宿主机拉取并缓存在 `packages/` 目录，构建时通过只读虚拟介质秒级注入。
+- **Base 驱动受控 VS 布局生成（Base-driven VS Layout Fetcher）**：在 Base 母盘生成后，通过独立受控的瞬态 VM 调用官方 `vs_BuildTools.exe --layout` 生成包含 MSVC 与 Win11 SDK 的完整离线布局虚拟磁盘（`vs_layout.qcow2`），供 MSVC 衍生镜像脱机极速复用。
 - **Copy-on-Write 增量隔离**：构建子镜像时母盘只读保护，通过 QCOW2 差分工作盘进行软件注入，即使子构建失败也绝不污染母盘。
 - **双工具链生态支持**：
   - **GNU**：内置便携版 w64devkit (GCC, Binutils, Make) 及 `x86_64-pc-windows-gnu`，完全摆脱 MSVC 依赖。
   - **MSVC**：内置 Visual Studio 2022 Build Tools (MSVC `cl.exe`, `link.exe`, Windows SDK) 及 `x86_64-pc-windows-msvc`，满足原生 Windows ABI 需求。
-- **通用下游调度器（Provision Runner）**：母盘开机自检挂载的光盘载荷，实现下游脚本秒级自动触发、验证与关机，彻底解耦网络握手。
+- **通用下游调度器（Provision Runner）**：母盘开机自检挂载的光盘载荷与数据卷标，实现下游脚本秒级自动触发、验证与关机，彻底解耦网络握手。
 - **全自动化运维**：集成 VirtIO Guest Tools (QEMU Guest Agent, NetKVM, Balloon)、默认开启 OpenSSH 服务 (端口 22)，并在收敛前执行磁盘 Trim 与 zlib 高压缩比置备。
 
 ## 3. 依赖规范与物料准备
@@ -40,33 +43,40 @@ graph TD
   - `wimlib` (WIM/ESD 检查工具)
   - `dos2unix` (Windows 换行符转换)
 
-### 3.2 输入物料
+### 3.2 输入物料与缓存目录
 - `ISO/26100.1_SERVERSTANDARD_X64_EN-US.ISO` (Windows Server 2025 Standard 镜像)
 - `ISO/virtio-win-0.1.302.iso` (VirtIO 驱动集合包)
-- 所有开发依赖与工具链（w64devkit、Visual Studio Build Tools、vc_redist、Rustup、cargo-binstall 及 10 大 Rust CLI 工具）均在构建过程中**全自动在线动态拉取最新发布版本**，严禁并杜绝任何固定版本的硬编码。
+- `packages/` (宿主机离线物料缓存，包含 w64devkit, vc_redist, Rust 工具链, 10 大 Cargo 工具, VS 布局盘 `vs_layout.qcow2`)
 
 ## 4. 目录结构说明
 ```
 .
 ├── ISO/                                 # 原始输入光盘 (Windows ISO + VirtIO ISO)
+├── packages/                            # 宿主机统一物料与布局缓存 (gitignore 保护)
 ├── images/                              # 模块化镜像定义目录
 │   ├── base/                            # 根母盘定义 (win2025-core.qcow2)
 │   │   ├── Autounattend.xml             # WinPE 无人值守应答
-│   │   ├── build.sh                     # 母盘独立构建脚本
-│   │   ├── provision.ps1                # 母盘初始化脚本 (VirtIO, SSH, Runner)
-│   │   ├── provision-runner.ps1         # 母盘通用下游调度器
+│   │   ├── build.sh                     # 母盘独立构建脚本 (-nic none)
+│   │   ├── provision.ps1                # 母盘初始化脚本 (VirtIO, 离线 SSH, Runner)
+│   │   ├── provision-runner.ps1         # 母盘通用多盘下游调度器
 │   │   └── README.md                    # 母盘详细说明
 │   └── rust/
 │       ├── gnu/                         # Rust GNU 衍生镜像定义
-│       │   ├── build.sh                 # GNU 衍生镜像独立构建脚本
-│       │   ├── provision.ps1            # w64devkit + Rust GNU 软件栈部署与自验
+│       │   ├── build.sh                 # GNU 衍生镜像独立构建脚本 (-nic none)
+│       │   ├── provision.ps1            # w64devkit + Rust GNU 软件栈纯离线部署与自验
 │       │   └── README.md                # GNU 镜像规格与使用说明
 │       └── msvc/                        # Rust MSVC 衍生镜像定义
-│           ├── build.sh                 # MSVC 衍生镜像独立构建脚本
-│           ├── provision.ps1            # VS Build Tools + Rust MSVC 部署与自验
+│           ├── build.sh                 # MSVC 衍生镜像独立构建脚本 (-nic none)
+│           ├── fetch-layout.sh          # Base 驱动的 VS 离线布局盘生成器
+│           ├── download-layout.ps1      # 瞬态 VM 内 VS 布局下载与格式化应答
+│           ├── provision.ps1            # VS Build Tools + Rust MSVC 纯离线部署与自验
 │           └── README.md                # MSVC 镜像规格与使用说明
 ├── scripts/                             # 通用编排与辅助脚本
 │   ├── common.sh                        # 公共变量、路径定义与通用函数库
+│   ├── fetch-common.sh                  # 宿主机通用物料拉取库
+│   ├── fetch-assets.sh                  # 宿主机物料拉取统一入口
+│   ├── fetch-gnu-assets.sh              # GNU 物料专用拉取器
+│   ├── fetch-msvc-assets.sh             # MSVC 物料专用拉取器
 │   ├── monitor-boot.py                  # ISO 引导按键辅助监控
 │   └── build.sh                         # 全局统一编排入口
 ├── output/                              # 最终交付镜像与 JSON 元数据
@@ -79,8 +89,14 @@ graph TD
 ### 5.1 构建命令
 在项目根目录下通过 Devbox 执行构建：
 ```bash
-# 构建整棵镜像树 (Base -> Rust GNU -> Rust MSVC)
+# 构建整棵镜像树 (Base -> 预拉取物料 -> VS 布局盘 -> Rust GNU -> Rust MSVC)
 devbox run build
+
+# 单独拉取宿主机所有物料
+devbox run fetch:assets
+
+# 基于已有的 Base 母盘单独生成 VS 离线布局盘
+devbox run fetch:layout
 
 # 或仅构建根母盘
 devbox run build:base
@@ -108,6 +124,8 @@ bash scripts/build.sh all
 bash scripts/build.sh base
 bash scripts/build.sh gnu
 bash scripts/build.sh msvc
+bash scripts/build.sh layout
+bash scripts/build.sh prefetch
 bash scripts/build.sh gnu --overlay-only
 ```
 

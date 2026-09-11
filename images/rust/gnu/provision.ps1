@@ -3,7 +3,8 @@
 # Description: Automated Rust GNU toolchain provisioning
 # Target: x86_64-pc-windows-gnu (w64devkit MinGW-w64 + Rustup)
 # ==============================================================================
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 
 # Prevent concurrent execution across SYSTEM and Administrator sessions
 $global:mutex = New-Object System.Threading.Mutex($false, "Global\ImageProvisionExecutionMutex")
@@ -22,7 +23,7 @@ Unregister-ScheduledTask -TaskName "ImageProvisionRunner" -Confirm:$false -Error
 Start-Transcript -Path "C:\provision-rust-gnu.log" -Append
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host " [Step 1/6] Starting Rust GNU Provisioning..." -ForegroundColor Green
+Write-Host " [Step 1/6] Starting Rust GNU Provisioning (100% Offline Mode)..." -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # 1. Locate payload media drive
@@ -43,79 +44,89 @@ $env:TEMP = "C:\Windows\Temp"
 $env:TMP = "C:\Windows\Temp"
 $env:CARGO_HOME = "C:\Users\Administrator\.cargo"
 $env:RUSTUP_HOME = "C:\Users\Administrator\.rustup"
+$cargoBin = "C:\Users\Administrator\.cargo\bin"
 
-# 2. Extract or install w64devkit (MinGW-w64 GCC toolchain)
+# 2. Deploy MinGW-w64 toolchain (w64devkit)
 Write-Host "`n[Step 2/6] Deploying MinGW-w64 toolchain (w64devkit: gcc, ld, ar, make)..." -ForegroundColor Yellow
 $mingwDest = "$toolsDir\w64devkit"
-Write-Host "[Info] Downloading latest w64devkit from GitHub..."
-$url = "https://github.com/skeeto/w64devkit/releases/latest/download/w64devkit.zip"
-$tmpZip = "$env:TEMP\w64devkit.zip"
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Invoke-WebRequest -Uri $url -OutFile $tmpZip -UseBasicParsing
-Write-Host "[Info] Expanding w64devkit.zip..."
-Expand-Archive -Path $tmpZip -DestinationPath $toolsDir -Force
-Remove-Item -Force $tmpZip -ErrorAction SilentlyContinue
+$tmpExe = "$env:TEMP\w64devkit.exe"
+
+$localPayload = "$mediaDrive\w64devkit.exe"
+if (!(Test-Path $localPayload) -or ((Get-Item $localPayload).Length -lt 10000000)) {
+    throw "CRITICAL: Pre-staged w64devkit is missing or corrupted on payload media ($localPayload)!"
+}
+
+Write-Host "[Info] Using pre-staged w64devkit from payload media..."
+Copy-Item -Path $localPayload -Destination $tmpExe -Force
+
+Write-Host "[Info] Expanding w64devkit to $toolsDir..."
+if (Test-Path $mingwDest) { Remove-Item -Recurse -Force $mingwDest -ErrorAction SilentlyContinue }
+$proc = Start-Process -FilePath $tmpExe -ArgumentList "-y -o`"$toolsDir`"" -Wait -PassThru -NoNewWindow
+Remove-Item -Force $tmpExe -ErrorAction SilentlyContinue
+
+if ($proc.ExitCode -ne 0 -or !(Test-Path "$mingwDest\bin\gcc.exe")) {
+    throw "CRITICAL: w64devkit extraction failed! ExitCode: $($proc.ExitCode), gcc.exe missing: $(!(Test-Path "$mingwDest\bin\gcc.exe"))"
+}
+Write-Host "[Success] MinGW-w64 toolchain deployed at $mingwDest" -ForegroundColor Green
 
 # 3. Deploy Microsoft Visual C++ Redistributable (vc_redist.x64)
 Write-Host "`n[Step 3/6] Deploying Microsoft Visual C++ Redistributable (x64)..." -ForegroundColor Yellow
-$vcRedistExe = "$env:TEMP\vc_redist.x64.exe"
-Write-Host "[Info] Downloading latest vc_redist.x64.exe from Microsoft..."
-Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $vcRedistExe -UseBasicParsing
+$vcRedistExe = "$mediaDrive\vc_redist.x64.exe"
+if (!(Test-Path $vcRedistExe) -or ((Get-Item $vcRedistExe).Length -lt 1000000)) {
+    throw "CRITICAL: Pre-staged vc_redist.x64.exe missing or corrupted on payload media!"
+}
 
-if (Test-Path $vcRedistExe) {
-    Write-Host "[Info] Executing vc_redist.x64 installer silently..."
-    $vcProc = Start-Process -FilePath $vcRedistExe -ArgumentList "/install /quiet /norestart" -Wait -PassThru -NoNewWindow
-    if ($vcProc.ExitCode -eq 0 -or $vcProc.ExitCode -eq 3010) {
-        Write-Host "[Success] Visual C++ Redistributable installed successfully (exit code $($vcProc.ExitCode))" -ForegroundColor Green
-    } else {
-        Write-Warning "vc_redist installer exited with code $($vcProc.ExitCode)"
+Write-Host "[Info] Executing vc_redist.x64 installer silently..."
+$vcProc = Start-Process -FilePath $vcRedistExe -ArgumentList "/install /quiet /norestart" -Wait -PassThru -NoNewWindow
+if ($vcProc.ExitCode -ne 0 -and $vcProc.ExitCode -ne 3010) {
+    throw "CRITICAL: vc_redist installer failed with exit code $($vcProc.ExitCode)!"
+}
+if (!(Test-Path "C:\Windows\System32\vcruntime140.dll")) {
+    throw "CRITICAL: vcruntime140.dll missing from System32 after vc_redist installation!"
+}
+Write-Host "[Success] Visual C++ Redistributable installed successfully!" -ForegroundColor Green
+
+# 4. Deploy Rust GNU Toolchain
+Write-Host "`n[Step 4/6] Deploying Rust GNU toolchain (x86_64-pc-windows-gnu)..." -ForegroundColor Yellow
+$rustDir = "C:\tools\rust"
+if (Test-Path $rustDir) { Remove-Item -Recurse -Force $rustDir -ErrorAction SilentlyContinue }
+New-Item -ItemType Directory -Path $rustDir -Force | Out-Null
+
+if (Test-Path "$mediaDrive\rust-gnu.tar.gz") {
+    Write-Host "[Info] Unpacking pre-staged Rust GNU archive ($mediaDrive\rust-gnu.tar.gz)..."
+    & tar.exe -xzf "$mediaDrive\rust-gnu.tar.gz" -C $rustDir
+} elseif (Test-Path "$mediaDrive\rust-gnu\bin\rustc.exe") {
+    Write-Host "[Info] Copying pre-staged Rust GNU toolchain from $mediaDrive\rust-gnu..."
+    Copy-Item -Path "$mediaDrive\rust-gnu\*" -Destination $rustDir -Recurse -Force
+} else {
+    throw "CRITICAL: Rust GNU toolchain payload not found on media!"
+}
+
+if (!(Test-Path "$rustDir\bin\rustc.exe")) {
+    throw "CRITICAL: rustc.exe not found in $rustDir\bin after extraction!"
+}
+Write-Host "[Success] Rust GNU toolchain unpacked at $rustDir" -ForegroundColor Green
+
+# Initialize offline rustup shims and link local toolchain
+$rustupSrc = "$mediaDrive\rustup-init.exe"
+if (Test-Path $rustupSrc) {
+    Write-Host "[Info] Initializing offline rustup client..."
+    $proc = Start-Process -FilePath $rustupSrc -ArgumentList "-y --default-host x86_64-pc-windows-gnu --default-toolchain none" -Wait -PassThru -NoNewWindow
+    if ($proc.ExitCode -ne 0) {
+        Write-Warning "rustup-init returned exit code $($proc.ExitCode)"
     }
-    Remove-Item -Force $vcRedistExe -ErrorAction SilentlyContinue
-}
-
-# 4. Install Rustup and x86_64-pc-windows-gnu toolchain
-Write-Host "`n[Step 4/6] Installing Rust GNU toolchain (x86_64-pc-windows-gnu)..." -ForegroundColor Yellow
-$rustupExe = "$env:TEMP\rustup-init.exe"
-Write-Host "[Info] Downloading latest rustup-init.exe..."
-Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile $rustupExe -UseBasicParsing
-
-Write-Host "[Info] Waiting for network connectivity to static.rust-lang.org..."
-for ($attempt = 1; $attempt -le 20; $attempt++) {
-    try {
-        $res = Invoke-WebRequest -Uri "https://static.rust-lang.org" -UseBasicParsing -TimeoutSec 5
-        if ($res.StatusCode -eq 200) {
-            Write-Host "[Success] Network is accessible!" -ForegroundColor Green
-            break
-        }
-    } catch {
-        Write-Host "[Wait] Network not ready yet (attempt $attempt/20), waiting 3s..."
-        Start-Sleep -Seconds 3
+    if (Test-Path "$cargoBin\rustup.exe") {
+        Write-Host "[Info] Linking local toolchain to rustup..."
+        & "$cargoBin\rustup.exe" toolchain link gnu "$rustDir"
+        & "$cargoBin\rustup.exe" toolchain link local "$rustDir"
+        & "$cargoBin\rustup.exe" default gnu
     }
 }
 
-$maxRetries = 3
-$rustSuccess = $false
-for ($i = 1; $i -le $maxRetries; $i++) {
-    Write-Host "[Attempt $i/$maxRetries] Running rustup-init for x86_64-pc-windows-gnu..."
-    $proc = Start-Process -FilePath $rustupExe -ArgumentList "-y --default-host x86_64-pc-windows-gnu --default-toolchain stable --profile default" -Wait -PassThru -NoNewWindow
-    if ($proc.ExitCode -eq 0) {
-        $rustSuccess = $true
-        Write-Host "[Success] Rust GNU toolchain installed successfully!" -ForegroundColor Green
-        break
-    }
-    Write-Warning "rustup-init returned exit code $($proc.ExitCode). Waiting 10 seconds before retry..."
-    Start-Sleep -Seconds 10
-}
-Remove-Item -Force $rustupExe -ErrorAction SilentlyContinue
-
-if (!$rustSuccess) {
-    throw "Failed to install Rust GNU toolchain after $maxRetries attempts."
-}
-
-# 5. Configure System PATH, Cargo Config, and Deploy cargo-binstall & Ecosystem Tools
-Write-Host "`n[Step 5/6] Configuring System Environment and Deploying cargo-binstall..." -ForegroundColor Yellow
+# 5. Configure System PATH, Cargo Config, and Deploy Ecosystem Tools
+Write-Host "`n[Step 5/6] Configuring System Environment and Deploying Cargo Tools..." -ForegroundColor Yellow
 $mingwBin = "$mingwDest\bin"
-$cargoBin = "C:\Users\Administrator\.cargo\bin"
+$rustBin = "$rustDir\bin"
 
 # Ensure libgcc_eh.a exists for rustc MinGW compatibility
 $gccLibDir = Get-ChildItem -Path "$mingwDest\lib\gcc\x86_64-w64-mingw32" -Directory | Select-Object -First 1
@@ -129,14 +140,16 @@ if ($gccLibDir) {
 }
 
 $currentMachinePath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
-$newEntries = @($mingwBin, $cargoBin)
+$newEntries = @($mingwBin, $rustBin, $cargoBin)
 foreach ($entry in $newEntries) {
-    if ($currentMachinePath -notlike "*$entry*") {
+    if (!$currentMachinePath.Contains($entry)) {
         $currentMachinePath = "$entry;$currentMachinePath"
     }
 }
 [Environment]::SetEnvironmentVariable("Path", $currentMachinePath, [EnvironmentVariableTarget]::Machine)
-$env:Path = "$mingwBin;$cargoBin;" + $env:Path
+[Environment]::SetEnvironmentVariable("CARGO_HOME", $env:CARGO_HOME, [EnvironmentVariableTarget]::Machine)
+[Environment]::SetEnvironmentVariable("RUSTUP_HOME", $env:RUSTUP_HOME, [EnvironmentVariableTarget]::Machine)
+$env:Path = "$mingwBin;$rustBin;$cargoBin;" + $env:Path
 
 $cargoHome = "C:\Users\Administrator\.cargo"
 if (!(Test-Path $cargoHome)) { New-Item -ItemType Directory -Path $cargoHome -Force | Out-Null }
@@ -148,71 +161,71 @@ ar = "ar"
 Set-Content -Path "$cargoHome\config.toml" -Value $cargoConfig -Encoding UTF8
 Write-Host "[Info] Cargo config written to $cargoHome\config.toml"
 
-# Deploy cargo-binstall
-Write-Host "`n[Info] Downloading latest cargo-binstall from GitHub..." -ForegroundColor Yellow
+# Deploy pre-staged Cargo tools from media
+$cargoToolsMedia = "$mediaDrive\cargo-tools"
+if (Test-Path $cargoToolsMedia) {
+    Write-Host "[Info] Deploying pre-staged Cargo tools from $cargoToolsMedia..."
+    if (!(Test-Path $cargoBin)) { New-Item -ItemType Directory -Path $cargoBin -Force | Out-Null }
+    Copy-Item -Path "$cargoToolsMedia\*.exe" -Destination $cargoBin -Force
+    Write-Host "[Success] Pre-staged Cargo tools deployed to $cargoBin." -ForegroundColor Green
+} else {
+    throw "CRITICAL: Pre-staged cargo-tools directory missing from payload media!"
+}
 $binstallExe = "$cargoBin\cargo-binstall.exe"
-$tmpZip = "$env:TEMP\cargo-binstall.zip"
-Invoke-WebRequest -Uri "https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-pc-windows-msvc.zip" -OutFile $tmpZip -UseBasicParsing
-Expand-Archive -Path $tmpZip -DestinationPath $cargoBin -Force
-Remove-Item -Force $tmpZip -ErrorAction SilentlyContinue
-
-if (!(Test-Path $binstallExe)) {
-    throw "cargo-binstall.exe failed to deploy to $cargoBin!"
-}
-Write-Host "[Success] cargo-binstall deployed at $binstallExe" -ForegroundColor Green
-
-# Install Cargo tools using cargo-binstall
-$binstallTools = @(
-    "sccache",
-    "cargo-nextest",
-    "cargo-sweep",
-    "cargo-geiger",
-    "cargo-audit",
-    "flamegraph",
-    "samply",
-    "cargo-show-asm",
-    "cargo-expand",
-    "cargo-bloat"
-)
-
-Write-Host "`n[Info] Installing tools using cargo-binstall: $($binstallTools -join ', ')..." -ForegroundColor Yellow
-foreach ($tool in $binstallTools) {
-    Write-Host "[Binstall] Installing $tool..."
-    $installed = $false
-    for ($attempt = 1; $attempt -le 3; $attempt++) {
-        $proc = Start-Process -FilePath $binstallExe -ArgumentList "--no-confirm --targets x86_64-pc-windows-msvc $tool" -Wait -PassThru -NoNewWindow
-        if ($proc.ExitCode -eq 0) {
-            $installed = $true
-            Write-Host "[Success] $tool installed successfully." -ForegroundColor Green
-            break
-        }
-        Write-Warning "Failed to install $tool (attempt $attempt/3, exit code $($proc.ExitCode)). Retrying in 5s..."
-        Start-Sleep -Seconds 5
-    }
-    if (!$installed) {
-        throw "Failed to install $tool via cargo-binstall after 3 attempts."
-    }
-}
 
 # 6. Verification Self-Test
 Write-Host "`n[Step 6/6] Running Toolchain Self-Test..." -ForegroundColor Yellow
 try {
     Write-Host "[Check] GCC:"
-    & "$mingwBin\gcc.exe" --version | Select-Object -First 1
+    $gccOut = & "$mingwBin\gcc.exe" --version
+    if ($LASTEXITCODE -ne 0 -or !$gccOut) { throw "gcc --version failed" }
+    Write-Host ($gccOut | Select-Object -First 1)
+
+    Write-Host "[Check] G++:"
+    $gppOut = & "$mingwBin\g++.exe" --version
+    if ($LASTEXITCODE -ne 0 -or !$gppOut) { throw "g++ --version failed" }
+    Write-Host ($gppOut | Select-Object -First 1)
+
+    Write-Host "[Check] GNU Make:"
+    $makeOut = & "$mingwBin\make.exe" --version
+    if ($LASTEXITCODE -ne 0 -or !$makeOut) { throw "make --version failed" }
+    Write-Host ($makeOut | Select-Object -First 1)
+
     Write-Host "[Check] Rustc:"
-    & "$cargoBin\rustc.exe" -Vv
+    $rustcOut = & "$cargoBin\rustc.exe" -Vv
+    if ($LASTEXITCODE -ne 0 -or !$rustcOut) { throw "rustc -Vv failed" }
+    Write-Host ($rustcOut | Select-Object -First 1)
+
     Write-Host "[Check] Cargo:"
-    & "$cargoBin\cargo.exe" -V
+    $cargoOut = & "$cargoBin\cargo.exe" -V
+    if ($LASTEXITCODE -ne 0 -or !$cargoOut) { throw "cargo -V failed" }
+    Write-Host $cargoOut
+
+    Write-Host "[Check] Cargo Clippy & Clippy Driver:"
+    $clippyOut = & "$cargoBin\cargo.exe" clippy --version
+    if ($LASTEXITCODE -ne 0 -or !$clippyOut) { throw "cargo clippy --version failed" }
+    Write-Host $clippyOut
+    $clippyDriverOut = & "$cargoBin\clippy-driver.exe" --version
+    if ($LASTEXITCODE -ne 0 -or !$clippyDriverOut) { throw "clippy-driver --version failed" }
+    Write-Host $clippyDriverOut
+
+    Write-Host "[Check] Cargo Fmt & Rustfmt:"
+    $fmtOut = & "$cargoBin\cargo.exe" fmt --version
+    if ($LASTEXITCODE -ne 0 -or !$fmtOut) { throw "cargo fmt --version failed" }
+    Write-Host $fmtOut
+    $rustfmtOut = & "$cargoBin\rustfmt.exe" --version
+    if ($LASTEXITCODE -ne 0 -or !$rustfmtOut) { throw "rustfmt --version failed" }
+    Write-Host $rustfmtOut
 
     Write-Host "[Check] Visual C++ Redistributable:"
-    if (Test-Path "C:\Windows\System32\vcruntime140.dll") {
-        Write-Host "vcruntime140.dll present in System32." -ForegroundColor Green
-    } else {
+    if (!(Test-Path "C:\Windows\System32\vcruntime140.dll")) {
         throw "vcruntime140.dll missing from System32!"
     }
+    Write-Host "vcruntime140.dll present in System32." -ForegroundColor Green
 
     Write-Host "[Check] cargo-binstall:"
     & $binstallExe -V
+    if ($LASTEXITCODE -ne 0) { throw "cargo-binstall -V failed" }
 
     Write-Host "[Check] Tools installed via cargo-binstall:"
     & "$cargoBin\sccache.exe" --version
@@ -232,6 +245,11 @@ try {
     Set-Location $testProject
     Write-Host "[Check] Compiling sample binary with cargo build..."
     & "$cargoBin\cargo.exe" build
+    if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE" }
+
+    Write-Host "[Check] Running cargo clippy on sample project..."
+    & "$cargoBin\cargo.exe" clippy
+    if ($LASTEXITCODE -ne 0) { throw "cargo clippy failed with exit code $LASTEXITCODE" }
     
     $exePath = "$testProject\target\debug\rust_verify_project.exe"
     if (Test-Path $exePath) {
@@ -243,6 +261,56 @@ try {
     }
     Set-Location C:\
     Remove-Item -Recurse -Force $testProject -ErrorAction SilentlyContinue
+
+    # C compiler verification (gcc)
+    $cTest = "$env:TEMP\test_c.c"
+    $cExe = "$env:TEMP\test_c.exe"
+    Set-Content -Path $cTest -Value @"
+#include <stdio.h>
+int main() {
+    printf("HELLO_FROM_GCC_COMPILER\n");
+    return 0;
+}
+"@ -Encoding ASCII
+    & "$mingwBin\gcc.exe" $cTest -o $cExe
+    if ($LASTEXITCODE -ne 0 -or !(Test-Path $cExe)) { throw "gcc compilation failed!" }
+    $cOut = & $cExe
+    Remove-Item -Force $cTest, $cExe -ErrorAction SilentlyContinue
+    if (!$cOut.Contains("HELLO_FROM_GCC_COMPILER")) { throw "gcc execution output mismatch!" }
+    Write-Host "[Check] C compilation and execution (gcc) succeeded." -ForegroundColor Green
+
+    # C++ compiler verification (g++)
+    $cppTest = "$env:TEMP\test_cpp.cpp"
+    $cppExe = "$env:TEMP\test_cpp.exe"
+    Set-Content -Path $cppTest -Value @"
+#include <iostream>
+int main() {
+    std::cout << "HELLO_FROM_GPP_COMPILER" << std::endl;
+    return 0;
+}
+"@ -Encoding ASCII
+    & "$mingwBin\g++.exe" $cppTest -o $cppExe
+    if ($LASTEXITCODE -ne 0 -or !(Test-Path $cppExe)) { throw "g++ compilation failed!" }
+    $cppOut = & $cppExe
+    Remove-Item -Force $cppTest, $cppExe -ErrorAction SilentlyContinue
+    if (!$cppOut.Contains("HELLO_FROM_GPP_COMPILER")) { throw "g++ execution output mismatch!" }
+    Write-Host "[Check] C++ compilation and execution (g++) succeeded." -ForegroundColor Green
+
+    # Cargo install verification
+    $installProject = "$env:TEMP\cargo_install_test"
+    if (Test-Path $installProject) { Remove-Item -Recurse -Force $installProject }
+    & "$cargoBin\cargo.exe" new --bin $installProject
+    Set-Location $installProject
+    & "$cargoBin\cargo.exe" install --debug --path .
+    if ($LASTEXITCODE -ne 0) { throw "cargo install failed!" }
+    Set-Location C:\
+    $installedBin = "$cargoBin\cargo_install_test.exe"
+    if (!(Test-Path $installedBin)) { throw "cargo installed binary not found in PATH!" }
+    $instOut = & $installedBin
+    & "$cargoBin\cargo.exe" uninstall cargo_install_test
+    Remove-Item -Recurse -Force $installProject -ErrorAction SilentlyContinue
+    if (!$instOut.Contains("Hello, world!")) { throw "cargo install binary output mismatch!" }
+    Write-Host "[Check] Cargo install & run succeeded." -ForegroundColor Green
 } catch {
     throw "Toolchain verification failed: $_"
 }

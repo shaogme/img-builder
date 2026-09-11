@@ -33,19 +33,54 @@ log_step "[Phase 1/4] Creating transient CoW overlay disk based on win2025-core.
 rm -f "${WORK_QCOW2}"
 qemu-img create -f qcow2 -b "${BASE_IMAGE}" -F qcow2 "${WORK_QCOW2}"
 
-# Prepare Payload ISO with MSVC provision script
-log_step "[Phase 2/4] Assembling Payload ISO (provision.ps1)..."
+# Ensure offline VS Build Tools layout disk exists
+log_step "[Phase 1.5/4] Ensuring VS Build Tools offline layout disk is ready..."
+if [[ ! -f "${VS_LAYOUT_QCOW2}" ]] && [[ ! -f "${BUILD_DIR}/vs_layout.qcow2" ]]; then
+    log_warn "VS Build Tools layout disk not found. Generating layout via Base VM..."
+    bash "${IMAGE_DIR}/fetch-layout.sh"
+fi
+
+if [[ -f "${BUILD_DIR}/vs_layout.qcow2" ]] && [[ ! -f "${VS_LAYOUT_QCOW2}" ]]; then
+    VS_LAYOUT_QCOW2="${BUILD_DIR}/vs_layout.qcow2"
+fi
+
+# Prepare Payload ISO with MSVC provision script and pre-fetched offline assets
+log_step "[Phase 2/4] Assembling Offline Payload ISO..."
+bash "${SCRIPTS_DIR}/fetch-msvc-assets.sh"
+
 rm -rf "${PAYLOAD_DIR}"
 mkdir -p "${PAYLOAD_DIR}"
 
 cp "${IMAGE_DIR}/provision.ps1" "${PAYLOAD_DIR}/child-provision.ps1"
 touch "${PAYLOAD_DIR}/runner.ready"
 
+log_info "Staging offline assets into MSVC payload media..."
+cp "${PACKAGES_DIR}/vc_redist.x64.exe" "${PAYLOAD_DIR}/vc_redist.x64.exe"
+cp "${PACKAGES_DIR}/rustup-init.exe" "${PAYLOAD_DIR}/rustup-init.exe"
+cp -r "${PACKAGES_DIR}/cargo-tools" "${PAYLOAD_DIR}/cargo-tools"
+
+if [[ -f "${PACKAGES_DIR}/rust-msvc.tar.gz" ]]; then
+    cp "${PACKAGES_DIR}/rust-msvc.tar.gz" "${PAYLOAD_DIR}/rust-msvc.tar.gz"
+fi
+if [[ -d "${PACKAGES_DIR}/rust-msvc" ]]; then
+    cp -r "${PACKAGES_DIR}/rust-msvc" "${PAYLOAD_DIR}/rust-msvc"
+fi
+
+if [[ -d "${IMAGE_DIR}/certificates" ]]; then
+    log_info "Staging offline Microsoft certificates into MSVC payload media..."
+    cp -r "${IMAGE_DIR}/certificates" "${PAYLOAD_DIR}/certificates"
+fi
+
 make_iso "${PAYLOAD_ISO}" "${PAYLOAD_DIR}" "PROVISION"
 
-# Run QEMU to execute child provisioning
+# Run QEMU with physical network isolation (-nic none) and dual VirtIO drives
+log_step "[Phase 3/4] Launching Isolated Offline MSVC QEMU Provisioning..."
 MONITOR_SOCK="${BUILD_DIR}/qemu-monitor-msvc.sock"
 rm -f "${MONITOR_SOCK}"
+
+LAYOUT_WORK="${BUILD_DIR}/msvc-layout-work.qcow2"
+rm -f "${LAYOUT_WORK}"
+qemu-img create -f qcow2 -b "${VS_LAYOUT_QCOW2}" -F qcow2 "${LAYOUT_WORK}"
 
 qemu-system-x86_64 \
     -enable-kvm \
@@ -53,15 +88,16 @@ qemu-system-x86_64 \
     -smp "${CPUS}" \
     -cpu host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time \
     -drive "file=${WORK_QCOW2},if=virtio,format=qcow2,cache=writeback" \
+    -drive "file=${LAYOUT_WORK},if=virtio,format=qcow2,cache=writeback" \
     -drive "file=${PAYLOAD_ISO},media=cdrom,index=1" \
-    -netdev user,id=net0 \
-    -device virtio-net-pci,netdev=net0 \
+    -nic none \
     -vnc "127.0.0.1:${VNC_PORT}" \
     -display none \
     -monitor "unix:${MONITOR_SOCK},server,nowait" \
     -boot order=c \
     -no-reboot
 
+rm -f "${LAYOUT_WORK}"
 log_info "VM provisioning completed and cleanly shut down."
 
 # Finalize image

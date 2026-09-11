@@ -33,17 +33,33 @@ log_step "[Phase 1/4] Creating transient CoW overlay disk based on win2025-core.
 rm -f "${WORK_QCOW2}"
 qemu-img create -f qcow2 -b "${BASE_IMAGE}" -F qcow2 "${WORK_QCOW2}"
 
-# Prepare Payload ISO with GNU provision script
-log_step "[Phase 2/4] Assembling Payload ISO (provision.ps1)..."
+# Prepare Payload ISO with GNU provision script and pre-fetched offline assets
+log_step "[Phase 2/4] Assembling Offline Payload ISO..."
+bash "${SCRIPTS_DIR}/fetch-gnu-assets.sh"
+
 rm -rf "${PAYLOAD_DIR}"
 mkdir -p "${PAYLOAD_DIR}"
 
 cp "${IMAGE_DIR}/provision.ps1" "${PAYLOAD_DIR}/child-provision.ps1"
 touch "${PAYLOAD_DIR}/runner.ready"
 
+log_info "Staging offline assets into payload media..."
+cp "${PACKAGES_DIR}/w64devkit.exe" "${PAYLOAD_DIR}/w64devkit.exe"
+cp "${PACKAGES_DIR}/vc_redist.x64.exe" "${PAYLOAD_DIR}/vc_redist.x64.exe"
+cp "${PACKAGES_DIR}/rustup-init.exe" "${PAYLOAD_DIR}/rustup-init.exe"
+cp -r "${PACKAGES_DIR}/cargo-tools" "${PAYLOAD_DIR}/cargo-tools"
+
+if [[ -f "${PACKAGES_DIR}/rust-gnu.tar.gz" ]]; then
+    cp "${PACKAGES_DIR}/rust-gnu.tar.gz" "${PAYLOAD_DIR}/rust-gnu.tar.gz"
+fi
+if [[ -d "${PACKAGES_DIR}/rust-gnu" ]]; then
+    cp -r "${PACKAGES_DIR}/rust-gnu" "${PAYLOAD_DIR}/rust-gnu"
+fi
+
 make_iso "${PAYLOAD_ISO}" "${PAYLOAD_DIR}" "PROVISION"
 
-# Run QEMU to execute child provisioning
+# Run QEMU with physical network isolation (-nic none)
+log_step "[Phase 3/4] Launching Isolated Offline QEMU Provisioning..."
 MONITOR_SOCK="${BUILD_DIR}/qemu-monitor-gnu.sock"
 rm -f "${MONITOR_SOCK}"
 
@@ -54,8 +70,7 @@ qemu-system-x86_64 \
     -cpu host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time \
     -drive "file=${WORK_QCOW2},if=virtio,format=qcow2,cache=writeback" \
     -drive "file=${PAYLOAD_ISO},media=cdrom,index=1" \
-    -netdev user,id=net0 \
-    -device virtio-net-pci,netdev=net0 \
+    -nic none \
     -vnc "127.0.0.1:${VNC_PORT}" \
     -display none \
     -monitor "unix:${MONITOR_SOCK},server,nowait" \

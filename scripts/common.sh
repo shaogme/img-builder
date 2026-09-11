@@ -36,7 +36,10 @@ VNC_PORT="1" # 127.0.0.1:5901
 ADMIN_USER="Administrator"
 ADMIN_PASS="Admin1234!"
 
-mkdir -p "${OUTPUT_DIR}" "${BUILD_DIR}"
+PACKAGES_DIR="${WORKSPACE_DIR}/packages"
+VS_LAYOUT_QCOW2="${PACKAGES_DIR}/vs_layout.qcow2"
+
+mkdir -p "${OUTPUT_DIR}" "${BUILD_DIR}" "${PACKAGES_DIR}"
 
 log_info() {
     echo -e "\033[1;34m[INFO]\033[0m $*"

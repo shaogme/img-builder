@@ -5,14 +5,13 @@
 # ==============================================================================
 $ErrorActionPreference = "Continue"
 
-$lockFile = "C:\tools\runner.lock"
-if (Test-Path $lockFile) {
+$global:runnerMutex = New-Object System.Threading.Mutex($false, "Global\ImageProvisionRunnerMutex")
+if (!$global:runnerMutex.WaitOne(500, $false)) {
     exit 0
 }
 
-# Quick check: Is there any CD-ROM or Removable volume?
-$removable = Get-Volume | Where-Object { $_.DriveType -in @('CD-ROM', 'Removable') }
-if (!$removable) {
+$lockFile = "C:\tools\runner.lock"
+if (Test-Path $lockFile) {
     exit 0
 }
 
@@ -24,20 +23,27 @@ Write-Host "==================================================" -ForegroundColor
 New-Item -ItemType File -Path $lockFile -Force | Out-Null
 
 $payloadDrive = $null
-for ($i = 1; $i -le 10; $i++) {
-    $vol = Get-Volume | Where-Object {
-        $dl = $_.DriveLetter
-        if ($dl) {
-            (Test-Path "$($dl):\child-provision.ps1") -and (Test-Path "$($dl):\runner.ready")
-        } else {
-            $false
-        }
+$layoutDrive = $null
+
+for ($i = 1; $i -le 15; $i++) {
+    $volumes = Get-Volume | Where-Object { $_.DriveLetter -and $_.DriveLetter -ne 'C' }
+    
+    # 查找主执行载荷盘 (PROVISION)
+    $provVol = $volumes | Where-Object {
+        (Test-Path "$($_.DriveLetter):\child-provision.ps1") -and (Test-Path "$($_.DriveLetter):\runner.ready")
     } | Select-Object -First 1
-    if ($vol) {
-        $payloadDrive = $vol.DriveLetter + ":"
+    
+    # 查找可选的离线布局盘 (VS_LAYOUT)
+    $layoutVol = $volumes | Where-Object {
+        ($_.FileSystemLabel -eq 'VS_LAYOUT') -or (Test-Path "$($_.DriveLetter):\vs_BuildTools.exe") -or (Test-Path "$($_.DriveLetter):\vs_setup.exe")
+    } | Select-Object -First 1
+
+    if ($provVol) {
+        $payloadDrive = "$($provVol.DriveLetter):"
+        if ($layoutVol) { $layoutDrive = "$($layoutVol.DriveLetter):" }
         break
     }
-    Write-Host "[Runner] Waiting for payload media to mount (attempt $i/10)..."
+    Write-Host "[Runner] Waiting for payload media to attach (attempt $i/15)..."
     Start-Sleep -Seconds 2
 }
 
@@ -48,7 +54,13 @@ if (!$payloadDrive) {
     exit 0
 }
 
-Write-Host "[Runner] Found payload on drive: $payloadDrive" -ForegroundColor Green
+Write-Host "[Runner] Main payload located at: $payloadDrive" -ForegroundColor Green
+if ($layoutDrive) {
+    Write-Host "[Runner] Detected offline VS layout disk at: $layoutDrive" -ForegroundColor Green
+    $env:VS_LAYOUT_DRIVE = $layoutDrive
+    [System.Environment]::SetEnvironmentVariable("VS_LAYOUT_DRIVE", $layoutDrive, "Machine")
+    [System.Environment]::SetEnvironmentVariable("VS_LAYOUT_DRIVE", $layoutDrive, "Process")
+}
 $childScript = "$payloadDrive\child-provision.ps1"
 
 Write-Host "[Runner] Invoking child provisioning script: $childScript..." -ForegroundColor Yellow

@@ -9,6 +9,8 @@ set -euo pipefail
 IMAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../scripts/common.sh
 source "${IMAGE_DIR}/../../scripts/common.sh"
+# shellcheck source=../../scripts/fetch-common.sh
+source "${SCRIPTS_DIR}/fetch-common.sh"
 
 RAW_QCOW2="${BUILD_DIR}/win2025-core-raw.qcow2"
 UNATTEND_ISO="${BUILD_DIR}/base-unattend.iso"
@@ -18,6 +20,15 @@ exec > >(tee -a "${LOG_FILE}") 2>&1
 
 log_step "Starting Base Image Build: win2025-core.qcow2"
 check_base_inputs
+
+# Pre-fetch offline OpenSSH on host
+log_step "[Phase 1/4] Ensuring offline Win32-OpenSSH is available on host..."
+fetch_win32_openssh
+
+if [[ ! -d "${PACKAGES_DIR}/openssh" ]] || [[ ! -f "${PACKAGES_DIR}/openssh/install-sshd.ps1" ]]; then
+    log_error "Win32-OpenSSH package missing or invalid at ${PACKAGES_DIR}/openssh!"
+    exit 1
+fi
 
 # Prepare Unattend ISO
 log_step "[Phase 1/4] Preparing Base Unattend ISO..."
@@ -30,11 +41,21 @@ cp "${IMAGE_DIR}/provision.ps1" "${ISO_ROOT}/provision-base.ps1"
 cp "${IMAGE_DIR}/provision.ps1" "${ISO_ROOT}/provision.ps1"
 cp "${IMAGE_DIR}/provision-runner.ps1" "${ISO_ROOT}/provision-runner.ps1"
 
+# Stage offline OpenSSH payload pre-fetched on host
+log_info "Staging offline Win32-OpenSSH into Base Unattend ISO..."
+cp -r "${PACKAGES_DIR}/openssh" "${ISO_ROOT}/openssh"
+
 cat << 'CMD_EOF' > "${ISO_ROOT}/run-provision.cmd"
 @echo off
 echo [%date% %time%] run-provision.cmd invoked from drive %~d0 >> C:\provision-bootstrap.log
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0provision-base.ps1" >> C:\provision-bootstrap.log 2>&1
-echo [%date% %time%] run-provision.cmd finished with exit code %ERRORLEVEL% >> C:\provision-bootstrap.log
+set EXIT_CODE=%ERRORLEVEL%
+echo [%date% %time%] run-provision.cmd finished with exit code %EXIT_CODE% >> C:\provision-bootstrap.log
+if %EXIT_CODE% NEQ 0 (
+    echo [ERROR] Base provisioning failed with exit code %EXIT_CODE%! Shutting down VM in 10 seconds... >> C:\provision-bootstrap.log
+    timeout /t 10 /nobreak >nul 2>&1
+    shutdown /s /t 0 /f
+)
 CMD_EOF
 
 cat << 'CFG_EOF' > "${ISO_ROOT}/sources/ei.cfg"
@@ -68,8 +89,7 @@ qemu-system-x86_64 \
     -drive "file=${WIN_ISO},media=cdrom,index=1" \
     -drive "file=${VIRTIO_ISO},media=cdrom,index=2" \
     -drive "file=${UNATTEND_ISO},media=cdrom,index=3" \
-    -netdev user,id=net0 \
-    -device virtio-net-pci,netdev=net0 \
+    -nic none \
     -vnc "127.0.0.1:${VNC_PORT}" \
     -display none \
     -monitor "unix:${MONITOR_SOCK},server,nowait" \
@@ -91,8 +111,7 @@ qemu-system-x86_64 \
     -drive "file=${RAW_QCOW2},if=virtio,format=qcow2,cache=writeback" \
     -drive "file=${VIRTIO_ISO},media=cdrom,index=1" \
     -drive "file=${UNATTEND_ISO},media=cdrom,index=2" \
-    -netdev user,id=net0 \
-    -device virtio-net-pci,netdev=net0 \
+    -nic none \
     -vnc "127.0.0.1:${VNC_PORT}" \
     -display none \
     -monitor "unix:${MONITOR_SOCK},server,nowait" \

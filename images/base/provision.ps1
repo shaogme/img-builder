@@ -83,22 +83,75 @@ try {
     Write-Warning "[Warning] Notice configuring logon settings: $_"
 }
 
-# 4. Configure OpenSSH Server
-Write-Host "`n[Step 4/5] Enabling OpenSSH Server service..." -ForegroundColor Yellow
-try {
-    Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
-    Start-Service sshd -ErrorAction SilentlyContinue
-    Set-Service -Name sshd -StartupType Automatic -ErrorAction SilentlyContinue
-    New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -Profile Any -ErrorAction SilentlyContinue
-    netsh advfirewall firewall add rule name="OpenSSH-Server-In-TCP" dir=in action=allow protocol=TCP localport=22 profile=any | Out-Null
-    Write-Host "[Success] OpenSSH Server enabled on port 22." -ForegroundColor Green
-} catch {
-    Write-Warning "[Warning] OpenSSH setup notice: $_"
+# 4. Configure OpenSSH Server (Host-pre-fetched Win32-OpenSSH)
+Write-Host "`n[Step 4/5] Deploying OpenSSH Server from offline media..." -ForegroundColor Yellow
+
+$offlineSshDir = "$mediaDrive\openssh"
+$targetSshDir = "C:\Program Files\OpenSSH"
+
+if (!(Test-Path "$offlineSshDir\install-sshd.ps1")) {
+    throw "CRITICAL: Offline Win32-OpenSSH package not found on media: $offlineSshDir"
+}
+
+Write-Host "[Info] Deploying Win32-OpenSSH to $targetSshDir..."
+if (Test-Path $targetSshDir) {
+    Remove-Item -Path $targetSshDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+Copy-Item -Path $offlineSshDir -Destination $targetSshDir -Recurse -Force
+
+# Clear Read-Only attributes inherited from CD-ROM media
+attrib.exe -r "$targetSshDir\*.*" /s
+Get-ChildItem -Path $targetSshDir -Recurse -Force | ForEach-Object {
+    if (!$_.PSIsContainer) {
+        $_.IsReadOnly = $false
+    }
+}
+
+Write-Host "[Info] Executing install-sshd.ps1..."
+& "$targetSshDir\install-sshd.ps1"
+
+# Update machine Path environment variable if needed
+$machinePath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine)
+if ($machinePath -notlike "*$targetSshDir*") {
+    [System.Environment]::SetEnvironmentVariable("Path", "$machinePath;$targetSshDir", [System.EnvironmentVariableTarget]::Machine)
+}
+$env:Path = "$env:Path;$targetSshDir"
+
+# Generate host keys if not present
+if (Test-Path "$targetSshDir\ssh-keygen.exe") {
+    Write-Host "[Info] Ensuring OpenSSH host keys are generated..."
+    & "$targetSshDir\ssh-keygen.exe" -A
+}
+
+# Repair host key and config permissions for service execution
+if (Test-Path "$targetSshDir\FixHostFilePermissions.ps1") {
+    Write-Host "[Info] Repairing OpenSSH host file permissions for service execution..."
+    & "$targetSshDir\FixHostFilePermissions.ps1" -Confirm:$false
+}
+
+# Configure sshd service startup and start
+Set-Service -Name sshd -StartupType Automatic
+Start-Service -Name sshd
+
+# Configure ssh-agent service startup and start
+Set-Service -Name "ssh-agent" -StartupType Automatic -ErrorAction SilentlyContinue
+Start-Service "ssh-agent" -ErrorAction SilentlyContinue
+
+# Configure firewall rules
+New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -Profile Any -ErrorAction SilentlyContinue
+netsh advfirewall firewall add rule name="OpenSSH-Server-In-TCP" dir=in action=allow protocol=TCP localport=22 profile=any | Out-Null
+
+$sshd = Get-Service -Name sshd -ErrorAction SilentlyContinue
+if ($sshd -and $sshd.Status -eq 'Running') {
+    Write-Host "[Success] OpenSSH Server deployed, started, and configured on port 22." -ForegroundColor Green
+} else {
+    throw "CRITICAL: OpenSSH Server (sshd) failed to start!"
 }
 
 # 5. Cleanup & Shutdown
 Write-Host "`n[Step 5/5] Performing disk cleanup and shutting down..." -ForegroundColor Yellow
 Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
+Set-Service -Name wuauserv -StartupType Disabled -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "C:\Windows\SoftwareDistribution\Download\*" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "$env:TEMP\*" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "C:\Windows\Temp\*" -ErrorAction SilentlyContinue

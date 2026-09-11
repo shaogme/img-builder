@@ -1,4 +1,10 @@
-ISO
+ISO/
 output/
 build/
 packages/
+.devbox/
+*.qcow2
+*.iso
+*.sock
+*.log
+/**/certificates

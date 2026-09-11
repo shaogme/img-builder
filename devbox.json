@@ -13,14 +13,16 @@
       "echo 'Welcome to devbox!' > /dev/null"
     ],
     "scripts": {
-      "build":      "bash scripts/build.sh all",
-      "build:base": "bash images/base/build.sh",
-      "build:gnu":  "bash images/rust/gnu/build.sh",
-      "build:msvc": "bash images/rust/msvc/build.sh",
-      "test:base":  "python3 scripts/test-base-ssh.py",
-      "test:gnu":   "python3 scripts/test-toolchain-gnu.py",
-      "test:msvc":  "python3 scripts/test-toolchain-msvc.py",
-      "clean":      "rm -rf build"
+      "build":        "bash scripts/build.sh all",
+      "build:base":   "bash images/base/build.sh",
+      "build:gnu":    "bash images/rust/gnu/build.sh",
+      "build:msvc":   "bash images/rust/msvc/build.sh",
+      "fetch:assets": "bash scripts/fetch-assets.sh all",
+      "fetch:layout": "bash images/rust/msvc/fetch-layout.sh",
+      "test:base":    "python3 scripts/test-base-ssh.py",
+      "test:gnu":     "python3 scripts/test-toolchain-gnu.py",
+      "test:msvc":    "python3 scripts/test-toolchain-msvc.py",
+      "clean":        "rm -rf build"
     }
   }
 }

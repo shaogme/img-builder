@@ -142,14 +142,33 @@ def main():
         # 4. Rustc GNU
         log("4. Rustc GNU Toolchain (x86_64-pc-windows-gnu)", "INFO")
         code, out, err = ssh_exec("rustc -Vv")
-        print(f"{out}\n")
-        record("Rustc GNU Toolchain (x86_64-pc-windows-gnu)", code == 0 and "x86_64-pc-windows-gnu" in out, out.splitlines()[0] if out else "")
+        print(f"{out or err}\n")
+        record("Rustc GNU Toolchain (x86_64-pc-windows-gnu)", code == 0 and "x86_64-pc-windows-gnu" in out, out.splitlines()[0] if out else (err.splitlines()[0] if err else ""))
 
         # 5. Cargo
         log("5. Cargo Package Manager", "INFO")
         code, out, err = ssh_exec("cargo -V")
-        print(f"{out}\n")
-        record("Cargo Package Manager", code == 0 and "cargo" in out.lower(), out)
+        print(f"{out or err}\n")
+        record("Cargo Package Manager", code == 0 and "cargo" in out.lower(), out or err)
+
+        # 5.1 Cargo Clippy
+        log("5.1 Cargo Clippy (cargo clippy)", "INFO")
+        code, out, err = ssh_exec("cargo clippy --version")
+        print(f"{out or err}\n")
+        record("Cargo Clippy (cargo clippy)", code == 0 and "clippy" in out.lower(), out or err)
+
+        # 5.2 Clippy Driver
+        log("5.2 Clippy Driver (clippy-driver)", "INFO")
+        code, out, err = ssh_exec("clippy-driver --version")
+        print(f"{out or err}\n")
+        record("Clippy Driver (clippy-driver)", code == 0 and "clippy" in out.lower(), out or err)
+
+        # 5.3 Rustfmt
+        log("5.3 Rustfmt (rustfmt & cargo fmt)", "INFO")
+        code, out, err = ssh_exec("cargo fmt --version")
+        code2, out2, err2 = ssh_exec("rustfmt --version")
+        print(f"cargo fmt: {out or err}\nrustfmt: {out2 or err2}\n")
+        record("Rustfmt (rustfmt & cargo fmt)", code == 0 and code2 == 0 and "rustfmt" in (out + out2).lower(), out or out2 or err)
 
         # 6. C Compilation & Execution
         log("6. C Compilation & Execution (gcc)", "INFO")
@@ -189,8 +208,8 @@ def main():
         # 11. cargo-binstall
         log("11. cargo-binstall Tool Verification", "INFO")
         code, out, err = ssh_exec('cargo binstall -V')
-        print(f"Output: {out}\n")
-        record("cargo-binstall Tool", code == 0 and "cargo-binstall" in out.lower() or code == 0 and any(c.isdigit() for c in out), out)
+        print(f"{out or err}\n")
+        record("cargo-binstall Tool", (code == 0 and "cargo-binstall" in out.lower()) or (code == 0 and any(c.isdigit() for c in out)), out or err)
 
         # 12. Tools Installed via cargo-binstall
         log("12. Cargo Ecosystem Tools Verification (Installed via cargo-binstall)", "INFO")
